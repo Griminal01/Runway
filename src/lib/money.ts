@@ -67,6 +67,12 @@ function parseISO(date: ISODate): [number, number, number] {
   return [y, m, d]
 }
 
+/** Throws unless the string is a real calendar date like '2026-08-27'. */
+export function assertISODate(date: ISODate): ISODate {
+  parseISO(date)
+  return date
+}
+
 function toDayNumber(date: ISODate): number {
   const [y, m, d] = parseISO(date)
   return Date.UTC(y, m - 1, d) / MS_PER_DAY
