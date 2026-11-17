@@ -8,6 +8,8 @@ Personal budgeting PWA for one user (Josh, UK, paid monthly in GBP), used on a S
 - Safe today = (balance - bills due before next payday - Food Floor remaining - pot top-ups due - buffer) / days until payday, floored at 0 for display.
 - Food Floor money is never shown as spendable and never borrowed by other categories. Unspent food money rolls into next food week.
 - Pots and the buffer are excluded from Safe today.
+- Bills and pot top-ups can have an end date (date of the final payment). Payments up to and including it count; nothing after it does.
+- Extra income (money in apart from pay, e.g. selling something) is added to the stored balance straight away, as an estimate until the next manual balance update. Deleting it takes it back off, unless a manual balance update has happened since.
 - Payday: by default, the penultimate working day of the month. Working days are Monday to Friday, excluding England & Wales bank holidays.
   - Bank holidays come from a list bundled with the app (no network fetch). Update it yearly; the user can also add or remove dates in settings.
   - The user can manually override the payday date for any month (e.g. early pay at Christmas). An override always wins over the calculated date.

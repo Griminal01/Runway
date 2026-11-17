@@ -125,9 +125,18 @@ Bottom navigation: **Today · Food · Bills & pots · Settings** (hash routes, s
 
 The phone is the only copy, so this matters.
 
-- **Export** to a JSON file saved to the phone (Downloads or Google Drive via the share sheet).
-- **Import** with a preview and confirmation before replacing data.
-- Gentle reminder if the last backup is over 30 days old.
+- **Save a backup** (Settings): a `runway-backup-YYYY-MM-DD.json` file via the share sheet, so it can go to Google Drive, Files or email. Falls back to a download.
+- **Restore** (Settings, and on the first-run screen for a new phone): strict checks on the file, a preview of what's in it, then replace everything in one go. A bad file changes nothing.
+- **Reminder** on Today: a week after setup if there's never been a backup, then whenever the last one is 30+ days old.
+
+---
+
+## Phase 8: Extra income and bill end dates
+
+- **Income** tab: log money in apart from pay (e.g. selling something) with an optional note. It's added to the balance straight away, so Safe today rises. Delete to take it back off.
+- **Add income** button on Today.
+- Bills and pots can have an **end date** (final payment). Counted up to and including it, then shown as ended.
+- Database schema v2 (new income table); existing data upgrades in place. Backups include income; older backups still restore.
 
 ---
 

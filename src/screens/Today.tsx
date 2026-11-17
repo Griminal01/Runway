@@ -1,6 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { AmountSheet } from '../components/AmountSheet'
+import { backupReminder } from '../lib/backup'
+import { saveBackupFile } from '../lib/backupFile'
 import { db } from '../lib/db'
 import { formatShortDate, paydayLine, statusFor } from '../lib/format'
 import {
@@ -10,7 +12,7 @@ import {
   type DueOccurrence,
   type SafeTodayInput,
 } from '../lib/money'
-import { addFoodSpend, setBalance } from '../lib/store'
+import { addFoodSpend, addIncome, setBalance } from '../lib/store'
 
 interface Props {
   input: SafeTodayInput
@@ -19,11 +21,14 @@ interface Props {
 }
 
 export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
-  const [sheet, setSheet] = useState<'balance' | 'food' | null>(null)
+  const [sheet, setSheet] = useState<'balance' | 'food' | 'income' | null>(null)
   const names = useLiveQuery(async () => {
     const [bills, pots] = await Promise.all([db.bills.toArray(), db.pots.toArray()])
     return new Map([...bills, ...pots].map((x) => [x.id, x.name]))
   })
+
+  const settings = useLiveQuery(() => db.settings.get('main'))
+  const reminder = settings ? backupReminder(settings) : null
 
   const result = safeToday(input)
   const status = statusFor(result, input.plannedDailySpend)
@@ -67,13 +72,29 @@ export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
       </section>
 
       <div className="actions">
-        <button className="button primary" onClick={() => setSheet('food')}>
+        <button className="button primary span-2" onClick={() => setSheet('food')}>
           Log food spend
+        </button>
+        <button className="button secondary" onClick={() => setSheet('income')}>
+          Add income
         </button>
         <button className="button secondary" onClick={() => setSheet('balance')}>
           Update balance
         </button>
       </div>
+
+      {reminder !== null && (
+        <section className="card reminder">
+          <p>
+            {reminder === 'never'
+              ? 'Your data is only on this phone. A backup keeps it safe if the phone is lost.'
+              : `It’s been ${reminder} days since your last backup.`}
+          </p>
+          <button className="button secondary wide spaced" onClick={() => void saveBackupFile(db)}>
+            Save a backup
+          </button>
+        </section>
+      )}
 
       <section className="card">
         <h2>Food this week</h2>
@@ -129,7 +150,11 @@ export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
             <span>
               Balance{' '}
               <span className="muted">
-                ({balanceEstimated ? `estimate after food spends, ${enteredLabel}` : enteredLabel})
+                (
+                {balanceEstimated
+                  ? `estimate after logged spends and income, ${enteredLabel}`
+                  : enteredLabel}
+                )
               </span>
             </span>
             <span className="amount">{formatGBP(result.balance)}</span>
@@ -172,6 +197,18 @@ export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
         submitLabel="Log it"
         onSubmit={async (amount, note) => {
           await addFoodSpend(db, input.today, amount, note)
+        }}
+        onClose={() => setSheet(null)}
+      />
+      <AmountSheet
+        open={sheet === 'income'}
+        title="Add income"
+        label="Amount received"
+        hint="Money in apart from your pay, e.g. selling something. Added to your balance."
+        withNote
+        submitLabel="Add it"
+        onSubmit={async (amount, note) => {
+          await addIncome(db, input.today, amount, note)
         }}
         onClose={() => setSheet(null)}
       />

@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useId, useState, type FormEvent } from 'react'
+import { BackupCard } from '../components/Backup'
 import { MoneyInput, Sheet } from '../components/Sheet'
 import { BANK_HOLIDAY_LIST, BANK_HOLIDAYS_COVER_UNTIL_YEAR } from '../lib/bankHolidays'
 import { db, type Settings as SettingsRow } from '../lib/db'
@@ -20,6 +21,7 @@ export function Settings({ today }: { today: ISODate }) {
     <main className="stack">
       <h1>Settings</h1>
       {settings && <NumbersForm settings={settings} />}
+      <BackupCard />
       <Paydays today={today} />
       <BankHolidays today={today} />
       <p className="muted small center">Everything is stored only on this phone.</p>

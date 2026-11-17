@@ -2,9 +2,10 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useId, useState, type FormEvent } from 'react'
 import { MoneyInput, Sheet } from '../components/Sheet'
 import { db, type MonthlyEntry } from '../lib/db'
-import { formatShortDate, ordinal, penceToInput } from '../lib/format'
+import { formatMonth, formatShortDate, ordinal, penceToInput } from '../lib/format'
 import {
   formatGBP,
+  hasEnded,
   monthKey,
   nextOccurrence,
   occurrenceKey,
@@ -50,10 +51,11 @@ function MonthlySection({ kind, today }: { kind: Kind; today: ISODate }) {
     return { items, done: new Set(done.map((d) => d.key)) }
   }, [kind])
 
+  const live = (i: MonthlyEntry) => i.active && !hasEnded(i, today)
   const items = [...(data?.items ?? [])].sort(
-    (a, b) => Number(b.active) - Number(a.active) || a.dayOfMonth - b.dayOfMonth,
+    (a, b) => Number(live(b)) - Number(live(a)) || a.dayOfMonth - b.dayOfMonth,
   )
-  const monthlyTotal = items.filter((i) => i.active).reduce((t, i) => t + i.amount, 0)
+  const monthlyTotal = items.filter(live).reduce((t, i) => t + i.amount, 0)
 
   return (
     <section className="card">
@@ -68,18 +70,21 @@ function MonthlySection({ kind, today }: { kind: Kind; today: ISODate }) {
           const next = nextOccurrence(item.dayOfMonth, today)
           const key = occurrenceKey(item.id, monthKey(next))
           const isDone = data?.done.has(key) ?? false
+          const ended = hasEnded(item, today)
+          const isFinal = item.endDate !== undefined && next === item.endDate
+          let detail = `${ordinal(item.dayOfMonth)} · next ${formatShortDate(next)}`
+          if (isFinal) detail = `${ordinal(item.dayOfMonth)} · final ${formatShortDate(next)}`
+          else if (item.endDate) detail += ` · ends ${formatMonth(monthKey(item.endDate))}`
+          if (ended) detail = `Ended ${formatShortDate(item.endDate!)} ${item.endDate!.slice(0, 4)}`
+          if (!item.active) detail = 'Paused'
           return (
-            <li key={item.id} className={`item${item.active ? '' : ' paused'}`}>
+            <li key={item.id} className={`item${live(item) ? '' : ' paused'}`}>
               <button className="item-main" onClick={() => setEditing(item)}>
                 <span className="item-name">{item.name}</span>
-                <span className="muted small">
-                  {item.active
-                    ? `${ordinal(item.dayOfMonth)} · next ${formatShortDate(next)}`
-                    : 'Paused'}
-                </span>
+                <span className="muted small">{detail}</span>
               </button>
               <span className="amount">{formatGBP(item.amount)}</span>
-              {item.active && (
+              {live(item) && (
                 <button
                   className={`chip${isDone ? ' on' : ''}`}
                   aria-pressed={isDone}
@@ -128,6 +133,8 @@ function MonthlyForm({
   const [amount, setAmount] = useState(item ? penceToInput(item.amount) : '')
   const [day, setDay] = useState(item ? String(item.dayOfMonth) : '')
   const [active, setActive] = useState(item?.active ?? true)
+  const [hasEnd, setHasEnd] = useState(item?.endDate !== undefined)
+  const [endDate, setEndDate] = useState(item?.endDate ?? '')
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -139,7 +146,16 @@ function MonthlyForm({
     if (pence === null || pence <= 0) return setError('Enter an amount above £0')
     if (!Number.isInteger(dayNum) || dayNum < 1 || dayNum > 31)
       return setError('Day must be 1 to 31')
-    const input = { name, amount: pence, dayOfMonth: dayNum, active }
+    if (hasEnd && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return setError('Pick the date of the final payment')
+    }
+    const input = {
+      name,
+      amount: pence,
+      dayOfMonth: dayNum,
+      active,
+      ...(hasEnd ? { endDate } : {}),
+    }
     try {
       if (item) await updateMonthly(db, kind, item.id, input)
       else await addMonthly(db, kind, input)
@@ -177,6 +193,36 @@ function MonthlyForm({
       <p id={`${id}-dayhint`} className="muted small">
         If a month is shorter, the last day of that month is used.
       </p>
+      <label className="toggle">
+        <input
+          type="checkbox"
+          checked={hasEnd}
+          onChange={(e) => {
+            setHasEnd(e.target.checked)
+            setError('')
+          }}
+        />
+        <span>Has an end date</span>
+      </label>
+      {hasEnd && (
+        <>
+          <label htmlFor={`${id}-end`}>Final payment on</label>
+          <input
+            id={`${id}-end`}
+            type="date"
+            className="text-input"
+            value={endDate}
+            onChange={(e) => {
+              setEndDate(e.target.value)
+              setError('')
+            }}
+            aria-describedby={`${id}-endhint`}
+          />
+          <p id={`${id}-endhint`} className="muted small">
+            Counted up to and including this date, then it stops.
+          </p>
+        </>
+      )}
       {item && (
         <label className="toggle">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />

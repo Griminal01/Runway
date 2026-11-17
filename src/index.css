@@ -371,7 +371,7 @@ details[open].card summary::after {
   right: 0;
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   max-width: 480px;
   margin: 0 auto;
   background: var(--surface);
@@ -601,4 +601,26 @@ details.more summary {
 
 .banner span {
   flex: 1;
+}
+
+.file-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch);
+  margin: 0;
+  cursor: pointer;
+}
+
+.file-button:has(+ input:focus-visible) {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+
+.reminder {
+  border-left: 4px solid var(--accent);
+}
+
+.actions .span-2 {
+  grid-column: span 2;
 }
