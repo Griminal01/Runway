@@ -14,7 +14,9 @@ import {
   formatGBP,
   isoWeekday,
   isWorkingDay,
+  nextOccurrence,
   nextPayday,
+  upcomingPaydays,
   occurrenceKey,
   parseGBP,
   safeToday,
@@ -344,5 +346,27 @@ describe('safeToday', () => {
 
   it('rejects non-integer money', () => {
     expect(() => safeToday({ ...input, balance: 100.5 })).toThrow(RangeError)
+  })
+})
+
+describe('nextOccurrence and upcomingPaydays', () => {
+  it('finds the next due date, today or later', () => {
+    expect(nextOccurrence(20, '2026-11-17')).toBe('2026-11-20')
+    expect(nextOccurrence(17, '2026-11-17')).toBe('2026-11-17')
+    expect(nextOccurrence(1, '2026-11-17')).toBe('2026-12-01')
+    expect(nextOccurrence(31, '2027-02-01')).toBe('2027-02-28')
+  })
+
+  it('lists the next paydays, flagging overrides', () => {
+    const list = upcomingPaydays('2026-11-17', 3, BH, { '2026-12': '2026-12-23' })
+    expect(list).toEqual([
+      { month: '2026-11', date: '2026-11-27', calculated: '2026-11-27', overridden: false },
+      { month: '2026-12', date: '2026-12-23', calculated: '2026-12-30', overridden: true },
+      { month: '2027-01', date: '2027-01-28', calculated: '2027-01-28', overridden: false },
+    ])
+  })
+
+  it('starts from next month once this payday has passed', () => {
+    expect(upcomingPaydays('2026-11-27', 1, BH, {})[0].month).toBe('2026-12')
   })
 })

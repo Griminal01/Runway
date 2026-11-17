@@ -49,3 +49,27 @@ export function statusFor(result: SafeTodayResult, plannedDailySpend: Pence): St
 export function paydayLine(result: SafeTodayResult): string {
   return `a day until payday on ${formatShortDate(result.payday)} (${plural(result.days, 'day')})`
 }
+
+/** 1 -> '1st', 22 -> '22nd', 13 -> '13th'. */
+export function ordinal(n: number): string {
+  const rem100 = n % 100
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`
+  const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] ?? 'th'
+  return `${n}${suffix}`
+}
+
+/** '2026-12' -> 'December 2026'. */
+export function formatMonth(month: string): string {
+  return new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/** Pence -> what goes in an editable money field ('1234.50'). */
+export function penceToInput(pence: number): string {
+  const sign = pence < 0 ? '-' : ''
+  const abs = Math.abs(pence)
+  return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`
+}

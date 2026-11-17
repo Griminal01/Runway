@@ -1,5 +1,7 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import { formatGBP, parseGBP, type Pence } from '../lib/money'
+import { useId, useState, type FormEvent } from 'react'
+import { parseGBP, type ISODate, type Pence } from '../lib/money'
+import { penceToInput } from '../lib/format'
+import { MoneyInput, Sheet } from './Sheet'
 
 interface Props {
   open: boolean
@@ -9,58 +11,49 @@ interface Props {
   initial?: Pence
   allowNegative?: boolean
   withNote?: boolean
+  /** Show a date field, defaulting to this date. Dates after it can't be picked. */
+  withDate?: ISODate
   submitLabel: string
-  onSubmit: (amount: Pence, note: string) => Promise<void>
+  onSubmit: (amount: Pence, note: string, date: ISODate | undefined) => Promise<void>
   onClose: () => void
 }
 
-/** Bottom sheet for entering one amount. Uses the native <dialog> for focus and back-button handling. */
-export function AmountSheet({
-  open,
-  title,
+/** Bottom sheet for entering one amount, optionally with a note and date. */
+export function AmountSheet(props: Props) {
+  return (
+    <Sheet open={props.open} title={props.title} onClose={props.onClose}>
+      <AmountForm {...props} />
+    </Sheet>
+  )
+}
+
+function AmountForm({
   label,
   hint,
   initial,
   allowNegative = false,
   withNote = false,
+  withDate,
   submitLabel,
   onSubmit,
   onClose,
 }: Props) {
-  const ref = useRef<HTMLDialogElement>(null)
   const id = useId()
-  const [text, setText] = useState('')
+  const [text, setText] = useState(initial === undefined ? '' : penceToInput(initial))
   const [note, setNote] = useState('')
+  const [date, setDate] = useState(withDate ?? '')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    const dialog = ref.current
-    if (!dialog) return
-    if (open && !dialog.open) {
-      setText(initial === undefined ? '' : formatGBP(initial).replace(/[£,]/g, ''))
-      setNote('')
-      setError('')
-      dialog.showModal()
-    } else if (!open && dialog.open) {
-      dialog.close()
-    }
-  }, [open, initial])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     const amount = parseGBP(text)
-    if (amount === null) {
-      setError('Enter an amount like 12.50')
-      return
-    }
-    if (!allowNegative && amount <= 0) {
-      setError('Enter an amount above £0')
-      return
-    }
+    if (amount === null) return setError('Enter an amount like 12.50')
+    if (!allowNegative && amount <= 0) return setError('Enter an amount above £0')
+    if (withDate && (!date || date > withDate)) return setError('Pick today or an earlier day')
     setSaving(true)
     try {
-      await onSubmit(amount, note)
+      await onSubmit(amount, note, withDate ? date : undefined)
       onClose()
     } catch {
       setError('That didn’t save. Please try again.')
@@ -70,51 +63,58 @@ export function AmountSheet({
   }
 
   return (
-    <dialog ref={ref} className="sheet" onClose={onClose} aria-labelledby={`${id}-title`}>
-      <form onSubmit={submit}>
-        <h2 id={`${id}-title`}>{title}</h2>
-        <label htmlFor={`${id}-amount`}>{label}</label>
-        <div className="money-input">
-          <span aria-hidden="true">£</span>
+    <form onSubmit={submit}>
+      <label htmlFor={`${id}-amount`}>{label}</label>
+      <MoneyInput
+        id={`${id}-amount`}
+        value={text}
+        onChange={(v) => {
+          setText(v)
+          setError('')
+        }}
+        invalid={!!error}
+        describedBy={`${id}-hint`}
+        autoFocus
+      />
+      <p id={`${id}-hint`} className={error ? 'error' : 'muted'}>
+        {error || hint || ' '}
+      </p>
+      {withDate && (
+        <>
+          <label htmlFor={`${id}-date`}>Day</label>
           <input
-            id={`${id}-amount`}
-            inputMode="decimal"
-            autoComplete="off"
-            enterKeyHint="done"
-            value={text}
+            id={`${id}-date`}
+            type="date"
+            className="text-input"
+            value={date}
+            max={withDate}
             onChange={(e) => {
-              setText(e.target.value)
+              setDate(e.target.value)
               setError('')
             }}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={`${id}-hint`}
-            autoFocus
           />
-        </div>
-        <p id={`${id}-hint`} className={error ? 'error' : 'muted'}>
-          {error || hint || ' '}
-        </p>
-        {withNote && (
-          <>
-            <label htmlFor={`${id}-note`}>Note (optional)</label>
-            <input
-              id={`${id}-note`}
-              className="text-input"
-              value={note}
-              maxLength={60}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </>
-        )}
-        <div className="sheet-actions">
-          <button type="button" className="button secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="button primary" disabled={saving}>
-            {submitLabel}
-          </button>
-        </div>
-      </form>
-    </dialog>
+        </>
+      )}
+      {withNote && (
+        <>
+          <label htmlFor={`${id}-note`}>Note (optional)</label>
+          <input
+            id={`${id}-note`}
+            className="text-input"
+            value={note}
+            maxLength={60}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </>
+      )}
+      <div className="sheet-actions">
+        <button type="button" className="button secondary" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="submit" className="button primary" disabled={saving}>
+          {submitLabel}
+        </button>
+      </div>
+    </form>
   )
 }

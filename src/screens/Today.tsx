@@ -109,6 +109,9 @@ export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
             <span className="amount">{formatGBP(Math.abs(foodLeft))}</span>
           </li>
         </ul>
+        <a className="link" href="#/food">
+          See food spends
+        </a>
         {food.overspend > 0 && (
           <p className="muted">
             The extra {formatGBP(food.overspend)} comes out of Safe today. Next week’s food money is

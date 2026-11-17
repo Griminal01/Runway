@@ -101,11 +101,11 @@ The copy is calm and factual. Red says "Nothing spare today, food and bills are 
 
 ## Phase 4: Setup screens
 
-- Edit settings: Food Floor, buffer, usual daily spend.
-- Food spend history: view and delete.
-- Bills and pots: add, edit, pause.
-- Payday: shows the calculated date for the next 3 months, with an override per month.
-- Bank holidays: view, add, remove.
+Bottom navigation: **Today · Food · Bills & pots · Settings** (hash routes, so the back gesture works).
+
+- Food: spends grouped by food week (last 6 weeks); log a spend for an earlier day; tap to delete.
+- Bills & pots: add, edit, pause, delete; "Mark paid" / "Mark moved" for the next occurrence.
+- Settings: edit Food Floor, buffer, usual daily spend; next 3 paydays with a per-month override; bank holidays for the next 12 months (later years tucked away), remove/restore/add.
 
 ## Phase 5: PWA and offline
 
