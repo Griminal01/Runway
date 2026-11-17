@@ -17,6 +17,7 @@ Personal budgeting PWA for one user (Josh, UK, paid monthly in GBP), used on a S
   - Unspent food money at the end of a food week rolls into the next food week, even across a payday. It is never released as spendable.
   - Food overspend within a week is taken from Safe today, not from the next food week.
 - Colour state: green if Safe today >= planned daily free spend; amber if above £0 but below that; red if £0 or the Food Floor is projected to be breached.
+  - The Food Floor is projected to be breached when balance - bills due before payday - Food Floor remaining < 0 (pots and buffer are ignored for this check).
 
 ## Engineering
 
