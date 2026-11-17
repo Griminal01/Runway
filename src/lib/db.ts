@@ -21,6 +21,8 @@ export interface BalanceEntry {
   amount: Pence
   /** When it was entered, ISO timestamp. The latest one is the current balance. */
   enteredAt: string
+  /** 'manual' (typed in, the default) or 'food' (adjusted by logging or removing a food spend). */
+  source?: 'manual' | 'food'
 }
 
 /** A bill or a pot top-up: same amount on the same day each month. */
@@ -44,6 +46,8 @@ export interface FoodSpendEntry {
   date: ISODate
   amount: Pence
   note?: string
+  /** When logging this spend lowered the balance. Lets a deletion put it back. */
+  balanceAdjustedAt?: string
 }
 
 export interface PaydayOverride {

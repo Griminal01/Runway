@@ -57,14 +57,20 @@ export async function saveSettings(db: RunwayDB, settings: Omit<Settings, 'id'>)
 
 export async function setBalance(db: RunwayDB, amount: Pence, at = new Date()): Promise<void> {
   assertPence(amount, 'balance') // may be negative (overdraft)
-  await db.balance.add({ amount, enteredAt: at.toISOString() })
+  await db.balance.add({ amount, enteredAt: at.toISOString(), source: 'manual' })
 }
 
 export async function latestBalance(
   db: RunwayDB,
-): Promise<{ amount: Pence; enteredAt: string } | undefined> {
+): Promise<{ amount: Pence; enteredAt: string; estimated: boolean } | undefined> {
   const entry = await db.balance.orderBy('enteredAt').last()
-  return entry && { amount: entry.amount, enteredAt: entry.enteredAt }
+  return (
+    entry && {
+      amount: entry.amount,
+      enteredAt: entry.enteredAt,
+      estimated: entry.source === 'food',
+    }
+  )
 }
 
 // --- Bills and pots ---------------------------------------------------------
@@ -120,22 +126,58 @@ export async function setDone(
 
 // --- Food -------------------------------------------------------------------
 
+/**
+ * Log food spending. It has just left the account, so the balance drops by the same amount
+ * (when there is a balance). The next manual balance update replaces this estimate.
+ */
 export async function addFoodSpend(
   db: RunwayDB,
   date: ISODate,
   amount: Pence,
   note?: string,
+  at = new Date(),
 ): Promise<number> {
   assertISODate(date)
   assertPence(amount, 'food spend')
   if (amount <= 0) throw new RangeError('Food spend must be more than £0')
   const trimmed = note?.trim()
-  const id = await db.foodSpends.add({ date, amount, ...(trimmed ? { note: trimmed } : {}) })
-  return id as number
+  return db.transaction('rw', db.foodSpends, db.balance, async () => {
+    const balance = await latestBalance(db)
+    const enteredAt = at.toISOString()
+    if (balance) {
+      await db.balance.add({ amount: balance.amount - amount, enteredAt, source: 'food' })
+    }
+    const id = await db.foodSpends.add({
+      date,
+      amount,
+      ...(trimmed ? { note: trimmed } : {}),
+      ...(balance ? { balanceAdjustedAt: enteredAt } : {}),
+    })
+    return id as number
+  })
 }
 
-export async function deleteFoodSpend(db: RunwayDB, id: number): Promise<void> {
-  await db.foodSpends.delete(id)
+/**
+ * Remove a food spend logged by mistake. Its amount goes back on the balance, unless a
+ * manual balance update has happened since (that update already shows the real figure).
+ */
+export async function deleteFoodSpend(db: RunwayDB, id: number, at = new Date()): Promise<void> {
+  await db.transaction('rw', db.foodSpends, db.balance, async () => {
+    const spend = await db.foodSpends.get(id)
+    if (!spend) return
+    await db.foodSpends.delete(id)
+    if (!spend.balanceAdjustedAt) return
+    const later = await db.balance.where('enteredAt').above(spend.balanceAdjustedAt).toArray()
+    if (later.some((entry) => entry.source !== 'food')) return
+    const balance = await latestBalance(db)
+    if (balance) {
+      await db.balance.add({
+        amount: balance.amount + spend.amount,
+        enteredAt: at.toISOString(),
+        source: 'food',
+      })
+    }
+  })
 }
 
 // --- Payday and bank holidays -----------------------------------------------

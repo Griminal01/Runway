@@ -94,12 +94,15 @@ The screen you open daily:
 - **Where your money is**, tap to expand: bills to come, food set aside, pots, buffer.
 - Food this week: spent / floor, with any rollover.
 - Two big buttons: **Update balance** and **Log food spend**.
+- First-run setup (balance, Food Floor, buffer, usual daily spend), so the screen has data from day one.
+- Logging a food spend also lowers the balance, so the spend isn't counted twice.
 
 The copy is calm and factual. Red says "Nothing spare today, food and bills are covered", not a warning.
 
 ## Phase 4: Setup screens
 
-- First-run setup: balance, Food Floor, buffer, planned daily spend.
+- Edit settings: Food Floor, buffer, usual daily spend.
+- Food spend history: view and delete.
 - Bills and pots: add, edit, pause.
 - Payday: shows the calculated date for the next 3 months, with an override per month.
 - Bank holidays: view, add, remove.
