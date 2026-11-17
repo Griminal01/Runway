@@ -116,8 +116,10 @@ Bottom navigation: **Today · Food · Bills & pots · Settings** (hash routes, s
 
 ## Phase 6: Deploy and install
 
-- Deploy workflow to the chosen host.
-- Install on the S24 Ultra, run the flight-mode check, use it for a pay cycle.
+- `.github/workflows/deploy.yml`: on every merge to `main`, lint, test, build with `BASE_PATH=/Runway/`, and publish to GitHub Pages. A failing test stops the deploy.
+- Live at **https://griminal01.github.io/Runway/**.
+- Install on the S24 Ultra: open the link in Chrome, **⋮ > Add to home screen > Install**. Then turn on flight mode and open it from the home screen to confirm it works offline.
+- Use it for a pay cycle and note anything that feels wrong.
 
 ## Phase 7: Backup
 
