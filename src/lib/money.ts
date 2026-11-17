@@ -202,6 +202,34 @@ export function dueDateInMonth(dayOfMonth: number, year: number, month: number):
   return makeDate(year, month, Math.min(dayOfMonth, daysInMonth(year, month)))
 }
 
+/** The next date this monthly item falls on, today or later. */
+export function nextOccurrence(dayOfMonth: number, today: ISODate): ISODate {
+  const [year, month] = parseISO(today)
+  const thisMonth = dueDateInMonth(dayOfMonth, year, month)
+  if (thisMonth >= today) return thisMonth
+  const [ny, nm] = nextMonth(year, month)
+  return dueDateInMonth(dayOfMonth, ny, nm)
+}
+
+/** The next n paydays from today, with whether each one is a manual override. */
+export function upcomingPaydays(
+  today: ISODate,
+  count: number,
+  bankHolidays: readonly ISODate[],
+  overrides: Readonly<Record<MonthKey, ISODate>>,
+): { month: MonthKey; date: ISODate; calculated: ISODate; overridden: boolean }[] {
+  let [year, month] = parseISO(nextPayday(today, bankHolidays, overrides))
+  const result = []
+  for (let i = 0; i < count; i++) {
+    const key = makeDate(year, month, 1).slice(0, 7)
+    const calculated = defaultPayday(year, month, bankHolidays)
+    const date = effectivePayday(year, month, bankHolidays, overrides)
+    result.push({ month: key, date, calculated, overridden: key in overrides })
+    ;[year, month] = nextMonth(year, month)
+  }
+  return result
+}
+
 export interface DueOccurrence {
   id: string
   amount: Pence

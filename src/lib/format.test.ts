@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { formatShortDate, paydayLine, plural, statusFor } from './format'
+import {
+  formatMonth,
+  formatShortDate,
+  ordinal,
+  paydayLine,
+  penceToInput,
+  plural,
+  statusFor,
+} from './format'
 import type { SafeTodayResult } from './money'
 
 const base: SafeTodayResult = {
@@ -53,5 +61,38 @@ describe('format', () => {
       const { label, message } = statusFor(s, 1500)
       expect(`${label} ${message}`).not.toMatch(/overspen|warning|careful|bad|fail|!/i)
     }
+  })
+})
+
+describe('ordinal and formatMonth', () => {
+  it.each([
+    [1, '1st'],
+    [2, '2nd'],
+    [3, '3rd'],
+    [4, '4th'],
+    [11, '11th'],
+    [12, '12th'],
+    [13, '13th'],
+    [21, '21st'],
+    [22, '22nd'],
+    [23, '23rd'],
+    [31, '31st'],
+  ])('%i -> %s', (n, text) => {
+    expect(ordinal(n)).toBe(text)
+  })
+
+  it('formats months', () => {
+    expect(formatMonth('2026-12')).toBe('December 2026')
+  })
+})
+
+describe('penceToInput', () => {
+  it.each([
+    [0, '0.00'],
+    [5, '0.05'],
+    [123456, '1234.56'],
+    [-250, '-2.50'],
+  ])('%i -> %s', (pence, text) => {
+    expect(penceToInput(pence)).toBe(text)
   })
 })

@@ -358,3 +358,225 @@ details[open].card summary::after {
   gap: 12px;
   margin-top: 16px;
 }
+
+/* Phase 4: navigation, lists, forms */
+
+#root {
+  padding-bottom: calc(76px + max(var(--gutter), env(safe-area-inset-bottom)));
+}
+
+.nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
+}
+
+.nav-item {
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.nav-item svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nav-item[aria-current='page'] {
+  color: var(--accent);
+}
+
+.small {
+  font-size: 0.875rem;
+}
+
+.center {
+  text-align: center;
+}
+
+.spaced {
+  margin-top: 12px;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.row-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.row-button {
+  width: 100%;
+  min-height: var(--touch);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rows li:last-child .row-button {
+  border-bottom: 0;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.item:last-child {
+  border-bottom: 0;
+}
+
+.item-main {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--touch);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.item-main.static {
+  cursor: default;
+}
+
+.item-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item.paused .item-name,
+.item.paused .amount {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.chip {
+  min-height: var(--touch);
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip.on {
+  background: color-mix(in srgb, var(--green) 18%, var(--surface-2));
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.button.danger {
+  background: transparent;
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--touch);
+  font-weight: 400;
+  margin: 8px 0 0;
+}
+
+.toggle input {
+  width: 24px;
+  height: 24px;
+  accent-color: var(--accent);
+}
+
+.inline-form {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.inline-form .text-input {
+  flex: 1;
+}
+
+input[type='date'].text-input {
+  min-height: var(--touch);
+  color-scheme: dark;
+}
+
+.sheet-figure {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.card > .button.wide,
+.card > form + .button {
+  margin-top: 12px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.field + .field {
+  margin-top: 12px;
+}
+
+details.more summary {
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}

@@ -1,12 +1,18 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { Nav } from './components/Nav'
+import { useRoute } from './hooks/useRoute'
 import { useToday } from './hooks/useToday'
 import { db } from './lib/db'
 import { latestBalance, loadSafeTodayInput } from './lib/store'
+import { Bills } from './screens/Bills'
+import { Food } from './screens/Food'
+import { Settings } from './screens/Settings'
 import { Setup } from './screens/Setup'
 import { Today } from './screens/Today'
 
 export default function App() {
   const today = useToday()
+  const route = useRoute()
   const data = useLiveQuery(async () => {
     const [input, balance] = await Promise.all([loadSafeTodayInput(db, today), latestBalance(db)])
     return { input, balance }
@@ -14,11 +20,20 @@ export default function App() {
 
   if (data === undefined) return <main aria-busy="true" />
   if (!data.input || !data.balance) return <Setup today={today} />
+
   return (
-    <Today
-      input={data.input}
-      balanceEnteredAt={data.balance.enteredAt}
-      balanceEstimated={data.balance.estimated}
-    />
+    <>
+      {route === 'today' && (
+        <Today
+          input={data.input}
+          balanceEnteredAt={data.balance.enteredAt}
+          balanceEstimated={data.balance.estimated}
+        />
+      )}
+      {route === 'food' && <Food today={today} />}
+      {route === 'bills' && <Bills today={today} />}
+      {route === 'settings' && <Settings today={today} />}
+      <Nav current={route} />
+    </>
   )
 }
