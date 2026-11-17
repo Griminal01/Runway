@@ -7,6 +7,7 @@ import {
   addFoodSpend,
   addMonthly,
   bankHolidays,
+  deleteFoodSpend,
   deleteMonthly,
   latestBalance,
   loadSafeTodayInput,
@@ -100,6 +101,56 @@ describe('food spends', () => {
     expect((await db.foodSpends.toArray())[0]).toMatchObject({ amount: 1234, note: 'Aldi' })
     await expect(addFoodSpend(db, '2026-11-16', 0)).rejects.toThrow(RangeError)
     await expect(addFoodSpend(db, '16/11/2026', 100)).rejects.toThrow(RangeError)
+  })
+})
+
+describe('food spends and the balance', () => {
+  const t = (iso: string) => new Date(iso)
+
+  it('logging a spend lowers the balance, marked as an estimate', async () => {
+    await setBalance(db, 80000, t('2026-11-17T09:00:00Z'))
+    await addFoodSpend(db, '2026-11-17', 6240, 'Big shop', t('2026-11-17T10:00:00Z'))
+    expect(await latestBalance(db)).toMatchObject({ amount: 73760, estimated: true })
+  })
+
+  it('a manual update replaces the estimate', async () => {
+    await setBalance(db, 80000, t('2026-11-17T09:00:00Z'))
+    await addFoodSpend(db, '2026-11-17', 6240, undefined, t('2026-11-17T10:00:00Z'))
+    await setBalance(db, 74000, t('2026-11-17T11:00:00Z'))
+    expect(await latestBalance(db)).toMatchObject({ amount: 74000, estimated: false })
+  })
+
+  it('logging a food spend lowers Safe today by the overspend only', async () => {
+    await saveSettings(db, settings)
+    await setBalance(db, 80000, t('2026-11-17T09:00:00Z'))
+    const before = safeToday((await loadSafeTodayInput(db, '2026-11-17'))!)
+    await addFoodSpend(db, '2026-11-17', 3000, undefined, t('2026-11-17T10:00:00Z'))
+    const within = safeToday((await loadSafeTodayInput(db, '2026-11-17'))!)
+    expect(within.spare).toBe(before.spare) // within the floor: Safe today unchanged
+    await addFoodSpend(db, '2026-11-17', 3000, undefined, t('2026-11-17T11:00:00Z'))
+    const over = safeToday((await loadSafeTodayInput(db, '2026-11-17'))!)
+    expect(over.spare).toBe(before.spare - 1000) // 1000 over the 5000 floor
+  })
+
+  it('deleting a spend puts the money back', async () => {
+    await setBalance(db, 80000, t('2026-11-17T09:00:00Z'))
+    const id = await addFoodSpend(db, '2026-11-17', 6240, undefined, t('2026-11-17T10:00:00Z'))
+    await deleteFoodSpend(db, id, t('2026-11-17T10:05:00Z'))
+    expect(await db.foodSpends.count()).toBe(0)
+    expect((await latestBalance(db))?.amount).toBe(80000)
+  })
+
+  it('deleting does not touch a balance typed in since', async () => {
+    await setBalance(db, 80000, t('2026-11-17T09:00:00Z'))
+    const id = await addFoodSpend(db, '2026-11-17', 6240, undefined, t('2026-11-17T10:00:00Z'))
+    await setBalance(db, 73760, t('2026-11-17T11:00:00Z'))
+    await deleteFoodSpend(db, id, t('2026-11-17T12:00:00Z'))
+    expect((await latestBalance(db))?.amount).toBe(73760)
+  })
+
+  it('logs without a balance yet', async () => {
+    await addFoodSpend(db, '2026-11-17', 100)
+    expect(await db.balance.count()).toBe(0)
   })
 })
 

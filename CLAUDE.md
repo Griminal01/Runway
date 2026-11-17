@@ -16,6 +16,7 @@ Personal budgeting PWA for one user (Josh, UK, paid monthly in GBP), used on a S
   - Food Floor remaining = what is left of the current food week, plus the full weekly Food Floor for each later food week that starts before next payday. A week that starts before payday but ends after it counts in full for the current period, so the next pay never starts short on food.
   - Unspent food money at the end of a food week rolls into the next food week, even across a payday. It is never released as spendable.
   - Food overspend within a week is taken from Safe today, not from the next food week.
+  - Logging a food spend also lowers the stored balance by the same amount, until the next manual balance update replaces it. Deleting a logged spend puts it back, unless a manual balance update has happened since.
 - Colour state: green if Safe today >= planned daily free spend; amber if above £0 but below that; red if £0 or the Food Floor is projected to be breached.
   - The Food Floor is projected to be breached when balance - bills due before payday - Food Floor remaining < 0 (pots and buffer are ignored for this check).
 
