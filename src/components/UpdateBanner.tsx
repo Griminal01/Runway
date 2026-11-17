@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
 const HOUR = 60 * 60 * 1000
@@ -21,6 +22,13 @@ export function UpdateBanner() {
       })
     },
   })
+
+  // The offline note is informational only, so it tidies itself away.
+  useEffect(() => {
+    if (!offlineReady) return
+    const timer = setTimeout(() => setOfflineReady(false), 6000)
+    return () => clearTimeout(timer)
+  }, [offlineReady, setOfflineReady])
 
   if (needRefresh) {
     return (

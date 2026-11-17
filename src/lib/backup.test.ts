@@ -13,6 +13,7 @@ import { RunwayDB } from './db'
 import { safeToday } from './money'
 import {
   addFoodSpend,
+  addIncome,
   addMonthly,
   loadSafeTodayInput,
   saveSettings,
@@ -52,6 +53,13 @@ async function seed(target: RunwayDB) {
   await addFoodSpend(target, '2026-11-16', 2340, 'Aldi', new Date('2026-11-17T10:00:00Z'))
   await setPaydayOverride(target, '2026-12', '2026-12-23')
   await setBankHolidayEdit(target, '2026-08-31', 'remove')
+  await addIncome(target, '2026-11-17', 4000, 'Sold bike parts', new Date('2026-11-17T11:00:00Z'))
+  await addMonthly(target, 'bills', {
+    name: 'Phone contract',
+    amount: 2500,
+    dayOfMonth: 22,
+    endDate: '2027-03-22',
+  })
 }
 
 async function roundTrip(json: string) {
@@ -70,6 +78,13 @@ describe('backup round trip', () => {
     const b = safeToday((await loadSafeTodayInput(other, '2026-11-17'))!)
     expect(b).toEqual(a)
     expect(await other.done.count()).toBe(1)
+    expect((await other.income.toArray())[0]).toMatchObject({
+      amount: 4000,
+      note: 'Sold bike parts',
+    })
+    expect((await other.bills.toArray()).find((b) => b.name === 'Phone contract')?.endDate).toBe(
+      '2027-03-22',
+    )
     expect(await other.paydayOverrides.get('2026-12')).toBeDefined()
     expect(await other.bankHolidayEdits.get('2026-08-31')).toEqual({
       date: '2026-08-31',
@@ -83,7 +98,10 @@ describe('backup round trip', () => {
     await saveSettings(other, { ...settings, buffer: 99 })
     await addMonthly(other, 'bills', { name: 'Stray', amount: 1, dayOfMonth: 1 })
     await roundTrip(JSON.stringify(await exportBackup(db)))
-    expect((await other.bills.toArray()).map((b) => b.name)).toEqual(['Phone'])
+    expect((await other.bills.toArray()).map((b) => b.name).sort()).toEqual([
+      'Phone',
+      'Phone contract',
+    ])
     expect((await other.settings.get('main'))?.buffer).toBe(10000)
   })
 
@@ -92,10 +110,11 @@ describe('backup round trip', () => {
     const backup = await exportBackup(db, new Date('2026-11-17T12:00:00Z'))
     expect(summarise(backup)).toEqual({
       exportedAt: '2026-11-17T12:00:00.000Z',
-      balance: 80000 - 2340, // after the food spend adjusted it
-      bills: 1,
+      balance: 80000 - 2340 + 4000, // after the food spend and income adjusted it
+      bills: 2,
       pots: 1,
       foodSpends: 1,
+      income: 1,
     })
   })
 
@@ -145,7 +164,7 @@ describe('parseBackup refuses bad files', () => {
     raw.data.balance[0].amount = 'lots'
     const result = parseBackup(JSON.stringify(raw))
     expect(result.ok).toBe(false)
-    expect(await other.bills.count()).toBe(1)
+    expect(await other.bills.count()).toBe(2)
   })
 
   it('allows a negative balance (overdraft)', async () => {
@@ -173,5 +192,23 @@ describe('backup reminder', () => {
     await saveSettings(db, settings)
     await markBackedUp(db, new Date('2026-11-17T12:00:00Z'))
     expect((await db.settings.get('main'))?.lastBackupAt).toBe('2026-11-17T12:00:00.000Z')
+  })
+})
+
+describe('older backups', () => {
+  it('restore without an income table', async () => {
+    await seed(db)
+    const raw = JSON.parse(JSON.stringify(await exportBackup(db)))
+    delete raw.data.income
+    const parsed = parseBackup(JSON.stringify(raw))
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) expect(parsed.backup.data.income).toEqual([])
+  })
+
+  it('refuse an invalid end date', async () => {
+    await seed(db)
+    const raw = JSON.parse(JSON.stringify(await exportBackup(db)))
+    raw.data.bills[0].endDate = '2027-02-30'
+    expect(parseBackup(JSON.stringify(raw)).ok).toBe(false)
   })
 })

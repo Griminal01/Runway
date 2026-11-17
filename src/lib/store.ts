@@ -1,5 +1,5 @@
 import { applyBankHolidayEdits, ENGLAND_AND_WALES_BANK_HOLIDAYS } from './bankHolidays'
-import type { MonthlyEntry, RunwayDB, Settings } from './db'
+import type { BalanceEntry, MonthlyEntry, RunwayDB, Settings } from './db'
 import {
   assertISODate,
   assertPence,
@@ -55,6 +55,44 @@ export async function saveSettings(db: RunwayDB, settings: Omit<Settings, 'id'>)
 
 // --- Balance ----------------------------------------------------------------
 
+function isManual(entry: BalanceEntry): boolean {
+  return entry.source === undefined || entry.source === 'manual'
+}
+
+/**
+ * Move the balance by `delta` as an estimate (a logged food spend or extra income).
+ * Returns the timestamp used, or undefined when there's no balance yet to adjust.
+ */
+async function adjustBalance(
+  db: RunwayDB,
+  delta: Pence,
+  source: 'food' | 'income',
+  at: Date,
+): Promise<string | undefined> {
+  const balance = await latestBalance(db)
+  if (!balance) return undefined
+  const enteredAt = at.toISOString()
+  await db.balance.add({ amount: balance.amount + delta, enteredAt, source })
+  return enteredAt
+}
+
+/**
+ * Undo an earlier adjustment, unless the balance has been typed in since: that manual figure
+ * already reflects reality.
+ */
+async function undoAdjustment(
+  db: RunwayDB,
+  adjustedAt: string | undefined,
+  delta: Pence,
+  source: 'food' | 'income',
+  at: Date,
+): Promise<void> {
+  if (!adjustedAt) return
+  const later = await db.balance.where('enteredAt').above(adjustedAt).toArray()
+  if (later.some(isManual)) return
+  await adjustBalance(db, -delta, source, at)
+}
+
 export async function setBalance(db: RunwayDB, amount: Pence, at = new Date()): Promise<void> {
   assertPence(amount, 'balance') // may be negative (overdraft)
   await db.balance.add({ amount, enteredAt: at.toISOString(), source: 'manual' })
@@ -68,7 +106,7 @@ export async function latestBalance(
     entry && {
       amount: entry.amount,
       enteredAt: entry.enteredAt,
-      estimated: entry.source === 'food',
+      estimated: !isManual(entry),
     }
   )
 }
@@ -81,7 +119,14 @@ export type MonthlyInput = Omit<MonthlyEntry, 'id' | 'active'> & { active?: bool
 function checkMonthly(input: MonthlyInput): MonthlyInput {
   assertPence(input.amount, `amount for ${input.name}`)
   if (input.amount < 0) throw new RangeError('Amount cannot be negative')
-  return { ...input, name: checkName(input.name), dayOfMonth: checkDayOfMonth(input.dayOfMonth) }
+  const { endDate, ...rest } = input
+  if (endDate !== undefined) assertISODate(endDate)
+  return {
+    ...rest,
+    name: checkName(input.name),
+    dayOfMonth: checkDayOfMonth(input.dayOfMonth),
+    ...(endDate !== undefined ? { endDate } : {}),
+  }
 }
 
 export async function addMonthly(
@@ -102,7 +147,10 @@ export async function updateMonthly(
 ): Promise<void> {
   const existing = await db[table].get(id)
   if (!existing) throw new Error(`No ${table} entry with id ${id}`)
-  await db[table].put({ ...existing, ...checkMonthly(input), id })
+  // Start without the old end date, so saving without one clears it.
+  const base: MonthlyEntry = { ...existing }
+  delete base.endDate
+  await db[table].put({ ...base, ...checkMonthly(input), id })
 }
 
 export async function deleteMonthly(db: RunwayDB, table: MonthlyTable, id: string): Promise<void> {
@@ -142,16 +190,12 @@ export async function addFoodSpend(
   if (amount <= 0) throw new RangeError('Food spend must be more than £0')
   const trimmed = note?.trim()
   return db.transaction('rw', db.foodSpends, db.balance, async () => {
-    const balance = await latestBalance(db)
-    const enteredAt = at.toISOString()
-    if (balance) {
-      await db.balance.add({ amount: balance.amount - amount, enteredAt, source: 'food' })
-    }
+    const adjustedAt = await adjustBalance(db, -amount, 'food', at)
     const id = await db.foodSpends.add({
       date,
       amount,
       ...(trimmed ? { note: trimmed } : {}),
-      ...(balance ? { balanceAdjustedAt: enteredAt } : {}),
+      ...(adjustedAt ? { balanceAdjustedAt: adjustedAt } : {}),
     })
     return id as number
   })
@@ -166,17 +210,46 @@ export async function deleteFoodSpend(db: RunwayDB, id: number, at = new Date())
     const spend = await db.foodSpends.get(id)
     if (!spend) return
     await db.foodSpends.delete(id)
-    if (!spend.balanceAdjustedAt) return
-    const later = await db.balance.where('enteredAt').above(spend.balanceAdjustedAt).toArray()
-    if (later.some((entry) => entry.source !== 'food')) return
-    const balance = await latestBalance(db)
-    if (balance) {
-      await db.balance.add({
-        amount: balance.amount + spend.amount,
-        enteredAt: at.toISOString(),
-        source: 'food',
-      })
-    }
+    await undoAdjustment(db, spend.balanceAdjustedAt, -spend.amount, 'food', at)
+  })
+}
+
+// --- Extra income -----------------------------------------------------------
+
+/**
+ * Log money in apart from salary (selling something, a refund, a gift). It has just arrived,
+ * so the balance rises by the same amount until the next manual balance update.
+ */
+export async function addIncome(
+  db: RunwayDB,
+  date: ISODate,
+  amount: Pence,
+  note?: string,
+  at = new Date(),
+): Promise<number> {
+  assertISODate(date)
+  assertPence(amount, 'income')
+  if (amount <= 0) throw new RangeError('Income must be more than £0')
+  const trimmed = note?.trim()
+  return db.transaction('rw', db.income, db.balance, async () => {
+    const adjustedAt = await adjustBalance(db, amount, 'income', at)
+    const id = await db.income.add({
+      date,
+      amount,
+      ...(trimmed ? { note: trimmed } : {}),
+      ...(adjustedAt ? { balanceAdjustedAt: adjustedAt } : {}),
+    })
+    return id as number
+  })
+}
+
+/** Remove income logged by mistake. It comes back off the balance, unless typed in since. */
+export async function deleteIncome(db: RunwayDB, id: number, at = new Date()): Promise<void> {
+  await db.transaction('rw', db.income, db.balance, async () => {
+    const entry = await db.income.get(id)
+    if (!entry) return
+    await db.income.delete(id)
+    await undoAdjustment(db, entry.balanceAdjustedAt, entry.amount, 'income', at)
   })
 }
 
@@ -254,7 +327,12 @@ export async function loadSafeTodayInput(
       )
       if (!settings || !balance) return null
 
-      const toItem = ({ id, amount, dayOfMonth }: MonthlyEntry) => ({ id, amount, dayOfMonth })
+      const toItem = ({ id, amount, dayOfMonth, endDate }: MonthlyEntry) => ({
+        id,
+        amount,
+        dayOfMonth,
+        ...(endDate !== undefined ? { endDate } : {}),
+      })
       return {
         today,
         balance: balance.amount,

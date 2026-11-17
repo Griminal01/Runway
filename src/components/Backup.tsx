@@ -124,6 +124,10 @@ export function RestoreButton({ label }: { label: string }) {
                 <span>Food spends</span>
                 <span>{summary.foodSpends}</span>
               </li>
+              <li className="row">
+                <span>Extra income</span>
+                <span>{summary.income}</span>
+              </li>
             </ul>
             <p className="muted small spaced">
               This replaces everything on this phone with the backup. Update your balance afterwards

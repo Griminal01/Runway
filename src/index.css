@@ -371,7 +371,7 @@ details[open].card summary::after {
   right: 0;
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   max-width: 480px;
   margin: 0 auto;
   background: var(--surface);
@@ -619,4 +619,8 @@ details.more summary {
 
 .reminder {
   border-left: 4px solid var(--accent);
+}
+
+.actions .span-2 {
+  grid-column: span 2;
 }

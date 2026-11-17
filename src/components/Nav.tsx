@@ -8,8 +8,13 @@ const ITEMS: { route: Route; label: string; icon: string }[] = [
     icon: 'M6 3v8a2 2 0 004 0V3M8 11v10M17 3c-2 0-3 3-3 6s1 4 3 4v8',
   },
   {
+    route: 'income',
+    label: 'Income',
+    icon: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3',
+  },
+  {
     route: 'bills',
-    label: 'Bills & pots',
+    label: 'Bills',
     icon: 'M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2zM9 8h6M9 12h6',
   },
   {

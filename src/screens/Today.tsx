@@ -12,7 +12,7 @@ import {
   type DueOccurrence,
   type SafeTodayInput,
 } from '../lib/money'
-import { addFoodSpend, setBalance } from '../lib/store'
+import { addFoodSpend, addIncome, setBalance } from '../lib/store'
 
 interface Props {
   input: SafeTodayInput
@@ -21,7 +21,7 @@ interface Props {
 }
 
 export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
-  const [sheet, setSheet] = useState<'balance' | 'food' | null>(null)
+  const [sheet, setSheet] = useState<'balance' | 'food' | 'income' | null>(null)
   const names = useLiveQuery(async () => {
     const [bills, pots] = await Promise.all([db.bills.toArray(), db.pots.toArray()])
     return new Map([...bills, ...pots].map((x) => [x.id, x.name]))
@@ -72,8 +72,11 @@ export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
       </section>
 
       <div className="actions">
-        <button className="button primary" onClick={() => setSheet('food')}>
+        <button className="button primary span-2" onClick={() => setSheet('food')}>
           Log food spend
+        </button>
+        <button className="button secondary" onClick={() => setSheet('income')}>
+          Add income
         </button>
         <button className="button secondary" onClick={() => setSheet('balance')}>
           Update balance
@@ -147,7 +150,11 @@ export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
             <span>
               Balance{' '}
               <span className="muted">
-                ({balanceEstimated ? `estimate after food spends, ${enteredLabel}` : enteredLabel})
+                (
+                {balanceEstimated
+                  ? `estimate after logged spends and income, ${enteredLabel}`
+                  : enteredLabel}
+                )
               </span>
             </span>
             <span className="amount">{formatGBP(result.balance)}</span>
@@ -190,6 +197,18 @@ export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
         submitLabel="Log it"
         onSubmit={async (amount, note) => {
           await addFoodSpend(db, input.today, amount, note)
+        }}
+        onClose={() => setSheet(null)}
+      />
+      <AmountSheet
+        open={sheet === 'income'}
+        title="Add income"
+        label="Amount received"
+        hint="Money in apart from your pay, e.g. selling something. Added to your balance."
+        withNote
+        submitLabel="Add it"
+        onSubmit={async (amount, note) => {
+          await addIncome(db, input.today, amount, note)
         }}
         onClose={() => setSheet(null)}
       />

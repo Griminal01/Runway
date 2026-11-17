@@ -12,6 +12,7 @@ import {
   foodFloorRemaining,
   foodWeekStart,
   formatGBP,
+  hasEnded,
   isoWeekday,
   isWorkingDay,
   nextOccurrence,
@@ -368,5 +369,29 @@ describe('nextOccurrence and upcomingPaydays', () => {
 
   it('starts from next month once this payday has passed', () => {
     expect(upcomingPaydays('2026-11-27', 1, BH, {})[0].month).toBe('2026-12')
+  })
+})
+
+describe('bills with an end date', () => {
+  const contract = { id: 'phone', amount: 2500, dayOfMonth: 20, endDate: '2026-12-20' }
+
+  it('counts payments up to and including the final one', () => {
+    const due = dueBeforePayday([contract], '2026-12-01', '2027-01-28', new Set())
+    expect(due.map((d) => d.dueDate)).toEqual(['2026-12-20'])
+  })
+
+  it('stops counting after the final payment', () => {
+    expect(dueBeforePayday([contract], '2026-12-31', '2027-02-25', new Set())).toEqual([])
+  })
+
+  it('ignores an end date when there is none', () => {
+    const open = { id: 'gym', amount: 2000, dayOfMonth: 20 }
+    expect(dueBeforePayday([open], '2026-12-31', '2027-02-25', new Set())).toHaveLength(2)
+  })
+
+  it('knows when an item has ended', () => {
+    expect(hasEnded(contract, '2026-12-20')).toBe(false)
+    expect(hasEnded(contract, '2026-12-21')).toBe(true)
+    expect(hasEnded({ dayOfMonth: 20 }, '2030-01-01')).toBe(false)
   })
 })

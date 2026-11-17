@@ -23,8 +23,11 @@ export interface BalanceEntry {
   amount: Pence
   /** When it was entered, ISO timestamp. The latest one is the current balance. */
   enteredAt: string
-  /** 'manual' (typed in, the default) or 'food' (adjusted by logging or removing a food spend). */
-  source?: 'manual' | 'food'
+  /**
+   * 'manual' (typed in, the default), or an estimate adjusted by logging or removing a
+   * food spend ('food') or extra income ('income').
+   */
+  source?: 'manual' | 'food' | 'income'
 }
 
 /** A bill or a pot top-up: same amount on the same day each month. */
@@ -35,6 +38,8 @@ export interface MonthlyEntry {
   /** 1-31. Shorter months use their last day. */
   dayOfMonth: number
   active: boolean
+  /** Date of the final payment, if it stops. */
+  endDate?: ISODate
 }
 
 /** One month's bill marked paid, or pot topped up. Key from occurrenceKey(). */
@@ -49,6 +54,16 @@ export interface FoodSpendEntry {
   amount: Pence
   note?: string
   /** When logging this spend lowered the balance. Lets a deletion put it back. */
+  balanceAdjustedAt?: string
+}
+
+/** Money in apart from salary, e.g. selling something. */
+export interface IncomeEntry {
+  id?: number
+  date: ISODate
+  amount: Pence
+  note?: string
+  /** When logging this raised the balance. Lets a deletion take it back off. */
   balanceAdjustedAt?: string
 }
 
@@ -71,6 +86,7 @@ export class RunwayDB extends Dexie {
   foodSpends!: EntityTable<FoodSpendEntry, 'id'>
   paydayOverrides!: EntityTable<PaydayOverride, 'month'>
   bankHolidayEdits!: EntityTable<BankHolidayEdit, 'date'>
+  income!: EntityTable<IncomeEntry, 'id'>
 
   constructor(name = 'runway') {
     super(name)
@@ -83,6 +99,10 @@ export class RunwayDB extends Dexie {
       foodSpends: '++id, date',
       paydayOverrides: 'month',
       bankHolidayEdits: 'date',
+    })
+    // v2: extra income. Earlier tables carry over unchanged.
+    this.version(2).stores({
+      income: '++id, date',
     })
   }
 }

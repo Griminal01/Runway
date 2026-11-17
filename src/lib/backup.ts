@@ -3,6 +3,7 @@ import type {
   BankHolidayEdit,
   DoneEntry,
   FoodSpendEntry,
+  IncomeEntry,
   MonthlyEntry,
   PaydayOverride,
   RunwayDB,
@@ -28,6 +29,7 @@ export interface BackupData {
   foodSpends: FoodSpendEntry[]
   paydayOverrides: PaydayOverride[]
   bankHolidayEdits: BankHolidayEdit[]
+  income: IncomeEntry[]
 }
 
 export interface Backup {
@@ -43,6 +45,7 @@ export interface BackupSummary {
   bills: number
   pots: number
   foodSpends: number
+  income: number
 }
 
 const TABLES = [
@@ -54,34 +57,23 @@ const TABLES = [
   'foodSpends',
   'paydayOverrides',
   'bankHolidayEdits',
+  'income',
 ] as const
 
 // --- Export -----------------------------------------------------------------
 
 export async function exportBackup(db: RunwayDB, now = new Date()): Promise<Backup> {
-  return db.transaction(
-    'r',
-    TABLES.map((t) => db[t]),
-    async () => {
-      const [settings, balance, bills, pots, done, foodSpends, paydayOverrides, bankHolidayEdits] =
-        await Promise.all(TABLES.map((t) => db[t].toArray()))
-      return {
-        app: BACKUP_APP,
-        format: BACKUP_FORMAT,
-        exportedAt: now.toISOString(),
-        data: {
-          settings,
-          balance,
-          bills,
-          pots,
-          done,
-          foodSpends,
-          paydayOverrides,
-          bankHolidayEdits,
-        } as BackupData,
-      }
-    },
-  )
+  const tables = TABLES.map((t) => db[t])
+  return db.transaction('r', tables, async () => {
+    const rows = await Promise.all(TABLES.map((t) => db[t].toArray()))
+    return {
+      app: BACKUP_APP,
+      format: BACKUP_FORMAT,
+      exportedAt: now.toISOString(),
+      // Every table in TABLES, so a new table can't be left out of backups.
+      data: Object.fromEntries(TABLES.map((t, i) => [t, rows[i]])) as unknown as BackupData,
+    }
+  })
 }
 
 export function backupFileName(today: ISODate): string {
@@ -107,8 +99,13 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function arrayOf(data: Record<string, unknown>, key: string): Record<string, unknown>[] {
+function arrayOf(
+  data: Record<string, unknown>,
+  key: string,
+  optional = false,
+): Record<string, unknown>[] {
   const value = data[key]
+  if (value === undefined && optional) return []
   if (!Array.isArray(value)) fail(`Missing ${key}`)
   if (!value.every(isObject)) fail(`Unexpected entry in ${key}`)
   return value
@@ -155,6 +152,7 @@ function monthly(entry: Record<string, unknown>, table: string): MonthlyEntry {
     amount: pence(entry.amount, `${table} amount`),
     dayOfMonth: day as number,
     active: entry.active !== false,
+    ...(entry.endDate !== undefined ? { endDate: date(entry.endDate, `${table} end date`) } : {}),
   }
 }
 
@@ -194,7 +192,7 @@ export function parseBackup(json: string): ParseResult {
           ...(Number.isInteger(b.id) ? { id: b.id as number } : {}),
           amount: pence(b.amount, 'Balance', true),
           enteredAt: timestamp(b.enteredAt, 'Balance time'),
-          source: b.source === 'food' ? 'food' : 'manual',
+          source: b.source === 'food' || b.source === 'income' ? b.source : 'manual',
         })),
         bills: arrayOf(d, 'bills').map((b) => monthly(b, 'bill')),
         pots: arrayOf(d, 'pots').map((p) => monthly(p, 'pot')),
@@ -221,6 +219,16 @@ export function parseBackup(json: string): ParseResult {
           if (e.action !== 'add' && e.action !== 'remove') fail('A bank holiday change isn’t valid')
           return { date: date(e.date, 'Bank holiday'), action: e.action as 'add' | 'remove' }
         }),
+        // Added after the first release, so older backups won't have it.
+        income: arrayOf(d, 'income', true).map((i) => ({
+          ...(Number.isInteger(i.id) ? { id: i.id as number } : {}),
+          date: date(i.date, 'Income date'),
+          amount: pence(i.amount, 'Income'),
+          ...(typeof i.note === 'string' && i.note.trim() ? { note: i.note } : {}),
+          ...(i.balanceAdjustedAt
+            ? { balanceAdjustedAt: timestamp(i.balanceAdjustedAt, 'Income time') }
+            : {}),
+        })),
       },
     }
     return { ok: true, backup }
@@ -240,6 +248,7 @@ export function summarise(backup: Backup): BackupSummary {
     bills: backup.data.bills.length,
     pots: backup.data.pots.length,
     foodSpends: backup.data.foodSpends.length,
+    income: backup.data.income.length,
   }
 }
 
@@ -259,6 +268,7 @@ export async function restoreBackup(db: RunwayDB, backup: Backup): Promise<void>
       await db.foodSpends.bulkAdd(d.foodSpends)
       await db.paydayOverrides.bulkAdd(d.paydayOverrides)
       await db.bankHolidayEdits.bulkAdd(d.bankHolidayEdits)
+      await db.income.bulkAdd(d.income)
     },
   )
 }

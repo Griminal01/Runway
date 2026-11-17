@@ -6,6 +6,7 @@ import { db } from './lib/db'
 import { latestBalance, loadSafeTodayInput } from './lib/store'
 import { Bills } from './screens/Bills'
 import { Food } from './screens/Food'
+import { Income } from './screens/Income'
 import { Settings } from './screens/Settings'
 import { Setup } from './screens/Setup'
 import { Today } from './screens/Today'
@@ -31,6 +32,7 @@ export default function App() {
         />
       )}
       {route === 'food' && <Food today={today} />}
+      {route === 'income' && <Income today={today} />}
       {route === 'bills' && <Bills today={today} />}
       {route === 'settings' && <Settings today={today} />}
       <Nav current={route} />

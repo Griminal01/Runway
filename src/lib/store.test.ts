@@ -5,9 +5,11 @@ import { localToday, requestPersistentStorage } from './device'
 import { occurrenceKey, safeToday } from './money'
 import {
   addFoodSpend,
+  addIncome,
   addMonthly,
   bankHolidays,
   deleteFoodSpend,
+  deleteIncome,
   deleteMonthly,
   latestBalance,
   loadSafeTodayInput,
@@ -234,5 +236,111 @@ describe('device helpers', () => {
       persist: async () => true,
     }
     expect(await requestPersistentStorage(throws)).toBe('denied')
+  })
+})
+
+describe('extra income', () => {
+  const t = (iso: string) => new Date(iso)
+
+  it('raises the balance as an estimate and raises Safe today', async () => {
+    await saveSettings(db, settings)
+    await setBalance(db, 80000, t('2026-11-17T09:00:00Z'))
+    const before = safeToday((await loadSafeTodayInput(db, '2026-11-17'))!)
+    await addIncome(db, '2026-11-17', 4000, ' Sold bike parts ', t('2026-11-17T10:00:00Z'))
+    expect(await latestBalance(db)).toMatchObject({ amount: 84000, estimated: true })
+    expect((await db.income.toArray())[0]).toMatchObject({ note: 'Sold bike parts' })
+    const after = safeToday((await loadSafeTodayInput(db, '2026-11-17'))!)
+    expect(after.perDay - before.perDay).toBe(400) // £40 over 10 days
+  })
+
+  it('deleting takes it back off the balance', async () => {
+    await setBalance(db, 80000, t('2026-11-17T09:00:00Z'))
+    const id = await addIncome(db, '2026-11-17', 4000, undefined, t('2026-11-17T10:00:00Z'))
+    await deleteIncome(db, id, t('2026-11-17T10:05:00Z'))
+    expect((await latestBalance(db))?.amount).toBe(80000)
+  })
+
+  it('deleting leaves a balance typed in since alone', async () => {
+    await setBalance(db, 80000, t('2026-11-17T09:00:00Z'))
+    const id = await addIncome(db, '2026-11-17', 4000, undefined, t('2026-11-17T10:00:00Z'))
+    await setBalance(db, 84000, t('2026-11-17T11:00:00Z'))
+    await deleteIncome(db, id, t('2026-11-17T12:00:00Z'))
+    expect((await latestBalance(db))?.amount).toBe(84000)
+  })
+
+  it('mixes with food spends: undoing one keeps the other', async () => {
+    await setBalance(db, 80000, t('2026-11-17T09:00:00Z'))
+    const food = await addFoodSpend(db, '2026-11-17', 2000, undefined, t('2026-11-17T10:00:00Z'))
+    await addIncome(db, '2026-11-17', 4000, undefined, t('2026-11-17T11:00:00Z'))
+    await deleteFoodSpend(db, food, t('2026-11-17T12:00:00Z'))
+    expect((await latestBalance(db))?.amount).toBe(84000)
+  })
+
+  it('rejects zero and fractional amounts', async () => {
+    await expect(addIncome(db, '2026-11-17', 0)).rejects.toThrow(RangeError)
+    await expect(addIncome(db, '2026-11-17', 10.5)).rejects.toThrow(RangeError)
+  })
+})
+
+describe('bill end dates', () => {
+  it('saves, clears and feeds the maths', async () => {
+    await saveSettings(db, settings)
+    await setBalance(db, 80000)
+    const id = await addMonthly(db, 'bills', {
+      name: 'Phone contract',
+      amount: 2500,
+      dayOfMonth: 20,
+      endDate: '2026-10-20',
+    })
+    // Ended before today: not counted.
+    expect(safeToday((await loadSafeTodayInput(db, '2026-11-17'))!).billsTotal).toBe(0)
+
+    await updateMonthly(db, 'bills', id, { name: 'Phone contract', amount: 2500, dayOfMonth: 20 })
+    expect((await db.bills.get(id))?.endDate).toBeUndefined()
+    expect(safeToday((await loadSafeTodayInput(db, '2026-11-17'))!).billsTotal).toBe(2500)
+
+    await expect(
+      updateMonthly(db, 'bills', id, {
+        name: 'x',
+        amount: 1,
+        dayOfMonth: 1,
+        endDate: '2026-02-30',
+      }),
+    ).rejects.toThrow(RangeError)
+  })
+})
+
+describe('schema upgrade', () => {
+  it('upgrades a v1 database to v2 without losing data', async () => {
+    const { default: Dexie } = await import('dexie')
+    const name = `upgrade-test-${n++}`
+    const v1 = new Dexie(name)
+    v1.version(1).stores({
+      settings: 'id',
+      balance: '++id, enteredAt',
+      bills: 'id',
+      pots: 'id',
+      done: 'key',
+      foodSpends: '++id, date',
+      paydayOverrides: 'month',
+      bankHolidayEdits: 'date',
+    })
+    await v1.table('settings').put({ id: 'main', ...settings })
+    await v1.table('balance').add({ amount: 80000, enteredAt: '2026-11-17T09:00:00.000Z' })
+    await v1
+      .table('bills')
+      .put({ id: 'b1', name: 'Phone', amount: 1500, dayOfMonth: 20, active: true })
+    v1.close()
+
+    const v2 = new RunwayDB(name)
+    try {
+      expect(await v2.bills.count()).toBe(1)
+      expect((await latestBalance(v2))?.amount).toBe(80000)
+      await addIncome(v2, '2026-11-17', 4000)
+      expect((await latestBalance(v2))?.amount).toBe(84000)
+      expect(v2.verno).toBe(2)
+    } finally {
+      await v2.delete()
+    }
   })
 })

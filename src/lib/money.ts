@@ -191,6 +191,8 @@ export interface MonthlyItem {
   amount: Pence
   /** 1-31. Months without that day use their last day. */
   dayOfMonth: number
+  /** Date of the final payment, if it stops. Nothing after it counts. */
+  endDate?: ISODate
 }
 
 /** Key used to mark one month's occurrence as done (bill paid, pot topped up). */
@@ -209,6 +211,14 @@ export function nextOccurrence(dayOfMonth: number, today: ISODate): ISODate {
   if (thisMonth >= today) return thisMonth
   const [ny, nm] = nextMonth(year, month)
   return dueDateInMonth(dayOfMonth, ny, nm)
+}
+
+/** True once the final payment of an item with an end date is in the past. */
+export function hasEnded(
+  item: Pick<MonthlyItem, 'dayOfMonth' | 'endDate'>,
+  today: ISODate,
+): boolean {
+  return item.endDate !== undefined && nextOccurrence(item.dayOfMonth, today) > item.endDate
 }
 
 /** The next n paydays from today, with whether each one is a manual override. */
@@ -254,6 +264,7 @@ export function dueBeforePayday(
       assertPence(item.amount, `amount for ${item.id}`)
       const dueDate = dueDateInMonth(item.dayOfMonth, year, month)
       if (dueDate < today || dueDate >= payday) continue
+      if (item.endDate !== undefined && dueDate > item.endDate) continue
       if (done.has(occurrenceKey(item.id, monthKey(dueDate)))) continue
       result.push({ id: item.id, amount: item.amount, dueDate })
     }

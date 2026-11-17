@@ -131,6 +131,15 @@ The phone is the only copy, so this matters.
 
 ---
 
+## Phase 8: Extra income and bill end dates
+
+- **Income** tab: log money in apart from pay (e.g. selling something) with an optional note. It's added to the balance straight away, so Safe today rises. Delete to take it back off.
+- **Add income** button on Today.
+- Bills and pots can have an **end date** (final payment). Counted up to and including it, then shown as ended.
+- Database schema v2 (new income table); existing data upgrades in place. Backups include income; older backups still restore.
+
+---
+
 ## Later, if wanted
 
 - Import a bank CSV on the device, to log food spends faster. Parsed locally, never stored as a file.
