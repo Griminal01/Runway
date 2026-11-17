@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { RestoreButton } from '../components/Backup'
 import { db } from '../lib/db'
 import { parseGBP, type ISODate } from '../lib/money'
 import { saveSettings, setBalance } from '../lib/store'
@@ -101,6 +102,11 @@ export function Setup({ today }: { today: ISODate }) {
           Show Safe today
         </button>
       </form>
+      <section className="card spaced">
+        <h2>Moving from another phone?</h2>
+        <p className="muted small">Restore a Runway backup file instead of starting fresh.</p>
+        <RestoreButton label="Restore from a backup" />
+      </section>
     </main>
   )
 }

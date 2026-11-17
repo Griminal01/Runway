@@ -14,6 +14,8 @@ export interface Settings {
   plannedDailySpend: Pence
   /** First day food spends count from. */
   foodTrackingStart: ISODate
+  /** When a backup file was last saved, ISO timestamp. */
+  lastBackupAt?: string
 }
 
 export interface BalanceEntry {

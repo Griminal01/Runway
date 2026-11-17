@@ -602,3 +602,21 @@ details.more summary {
 .banner span {
   flex: 1;
 }
+
+.file-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch);
+  margin: 0;
+  cursor: pointer;
+}
+
+.file-button:has(+ input:focus-visible) {
+  outline: 3px solid var(--text);
+  outline-offset: 2px;
+}
+
+.reminder {
+  border-left: 4px solid var(--accent);
+}

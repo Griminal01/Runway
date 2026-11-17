@@ -1,6 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { AmountSheet } from '../components/AmountSheet'
+import { backupReminder } from '../lib/backup'
+import { saveBackupFile } from '../lib/backupFile'
 import { db } from '../lib/db'
 import { formatShortDate, paydayLine, statusFor } from '../lib/format'
 import {
@@ -24,6 +26,9 @@ export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
     const [bills, pots] = await Promise.all([db.bills.toArray(), db.pots.toArray()])
     return new Map([...bills, ...pots].map((x) => [x.id, x.name]))
   })
+
+  const settings = useLiveQuery(() => db.settings.get('main'))
+  const reminder = settings ? backupReminder(settings) : null
 
   const result = safeToday(input)
   const status = statusFor(result, input.plannedDailySpend)
@@ -74,6 +79,19 @@ export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
           Update balance
         </button>
       </div>
+
+      {reminder !== null && (
+        <section className="card reminder">
+          <p>
+            {reminder === 'never'
+              ? 'Your data is only on this phone. A backup keeps it safe if the phone is lost.'
+              : `It’s been ${reminder} days since your last backup.`}
+          </p>
+          <button className="button secondary wide spaced" onClick={() => void saveBackupFile(db)}>
+            Save a backup
+          </button>
+        </section>
+      )}
 
       <section className="card">
         <h2>Food this week</h2>
