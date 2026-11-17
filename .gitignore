@@ -1,0 +1,32 @@
+# Dependencies and build output
+node_modules
+dist
+dist-ssr
+*.local
+*.tsbuildinfo
+coverage
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.sw?
+
+# Personal financial data: never commit (see CLAUDE.md)
+*.csv
+*.ofx
+*.qif
+*.qfx
+*.xls
+*.xlsx
+*.pdf
+backup*.json
+runway-backup*
+/data/
+/statements/
+.env*

@@ -15,14 +15,14 @@ Runway is a PWA. The code is a static site; the phone downloads it once and inst
 3. On the phone: open the URL in Chrome, then **⋮ menu > Add to home screen > Install**.
 4. Updates download in the background; the app shows "Update ready, tap to reload".
 
-**Host (decision needed):** GitHub Pages if the repo is public or you have GitHub Pro; Cloudflare Pages if the repo stays private on a free account. Both are free.
+**Host:** GitHub Pages (repo made public; it holds code only, never figures). Served at `https://griminal01.github.io/Runway/`, so the build uses base path `/Runway/`.
 
 ---
 
 ## Phase 0: Scaffold
 
 - Vite + React + TypeScript, strict mode.
-- Vitest, ESLint, Prettier.
+- Vitest, oxlint (Vite's default linter), Prettier.
 - `.gitignore` blocks `*.csv`, `*.ofx`, `*.qif`, `backup*.json`, `/data/`, so statements and backups cannot be committed by accident.
 - Base styling: dark mode default, 384px-first layout, 48px minimum touch targets, system font.
 - GitHub Actions: install, test, build on every PR.
@@ -33,25 +33,26 @@ Runway is a PWA. The code is a static site; the phone downloads it once and inst
 
 Pure functions only: no dates from the clock, no storage. "Today" is always passed in, so every rule is testable.
 
-| Function | Purpose |
-|---|---|
-| `formatGBP(pence)` | `123456` → `£1,234.56`, negatives as `-£12.30` |
-| `isWorkingDay(date, bankHolidays)` | Mon–Fri and not a bank holiday |
-| `defaultPayday(year, month, bankHolidays)` | Penultimate working day |
-| `effectivePayday(year, month, holidays, overrides)` | Override wins over default |
-| `nextPayday(today, ...)` | Rolls to next month on payday itself |
-| `daysUntilPayday(today, payday)` | Counts today, not payday; minimum 1 |
-| `billsDueBeforePayday(bills, today, payday)` | Unpaid bills due today up to the day before payday |
-| `foodFloorRemaining(...)` | Rest of current food week + full Food Floor for each later week starting before payday |
-| `foodWeekStart(date)` | The Monday on or before the date |
-| `safeToday(inputs)` | The core formula, returns unfloored pence |
-| `colourState(safeToday, plannedDaily, foodBreach)` | green / amber / red |
+| Function                                            | Purpose                                                                                |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `formatGBP(pence)`                                  | `123456` → `£1,234.56`, negatives as `-£12.30`                                         |
+| `isWorkingDay(date, bankHolidays)`                  | Mon–Fri and not a bank holiday                                                         |
+| `defaultPayday(year, month, bankHolidays)`          | Penultimate working day                                                                |
+| `effectivePayday(year, month, holidays, overrides)` | Override wins over default                                                             |
+| `nextPayday(today, ...)`                            | Rolls to next month on payday itself                                                   |
+| `daysUntilPayday(today, payday)`                    | Counts today, not payday; minimum 1                                                    |
+| `billsDueBeforePayday(bills, today, payday)`        | Unpaid bills due today up to the day before payday                                     |
+| `foodFloorRemaining(...)`                           | Rest of current food week + full Food Floor for each later week starting before payday |
+| `foodWeekStart(date)`                               | The Monday on or before the date                                                       |
+| `safeToday(inputs)`                                 | The core formula, returns unfloored pence                                              |
+| `colourState(safeToday, plannedDaily, foodBreach)`  | green / amber / red                                                                    |
 
 Integer maths only. Division rounds **down** to the penny, so the app never overstates spendable money.
 
 **Bank holidays:** bundled England & Wales list for 2026–2028 in `src/lib/bankHolidays.ts`, checked against gov.uk when added.
 
 **Must-have tests:**
+
 - Aug 2026: 31st is a bank holiday → payday Thu 27 Aug.
 - Aug 2027: 30th is a bank holiday → payday Fri 27 Aug.
 - Dec 2026: Christmas holidays fall early → payday Wed 30 Dec.
@@ -67,6 +68,7 @@ Integer maths only. Division rounds **down** to the penny, so the app never over
 ## Phase 2: Data on the device (Dexie)
 
 Tables:
+
 - `settings`: buffer, weekly Food Floor, planned daily free spend.
 - `balance`: manual balance entries (amount, timestamp). Latest one is used.
 - `bills`: name, amount, day of month, active.
@@ -77,6 +79,7 @@ Tables:
 - `bankHolidayEdits`: dates added or removed by you.
 
 Also:
+
 - Call `navigator.storage.persist()` on first run, so Chrome doesn't clear data when storage is low.
 - A schema version, so later changes migrate data instead of wiping it.
 
@@ -85,6 +88,7 @@ Also:
 ## Phase 3: Today screen
 
 The screen you open daily:
+
 - **Safe today**, large, in its colour state.
 - One plain line, e.g. "£18.40 a day until payday on Thu 27 Aug (9 days)".
 - **Where your money is**, tap to expand: bills to come, food set aside, pots, buffer.
@@ -115,6 +119,7 @@ The copy is calm and factual. Red says "Nothing spare today, food and bills are 
 ## Phase 7: Backup
 
 The phone is the only copy, so this matters.
+
 - **Export** to a JSON file saved to the phone (Downloads or Google Drive via the share sheet).
 - **Import** with a preview and confirmation before replacing data.
 - Gentle reminder if the last backup is over 30 days old.
