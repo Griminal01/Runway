@@ -12,6 +12,8 @@ import {
 import { RunwayDB } from './db'
 import { safeToday } from './money'
 import {
+  addDebt,
+  addDebtPayment,
   addFoodSpend,
   addIncome,
   addMonthly,
@@ -54,6 +56,15 @@ async function seed(target: RunwayDB) {
   await setPaydayOverride(target, '2026-12', '2026-12-23')
   await setBankHolidayEdit(target, '2026-08-31', 'remove')
   await addIncome(target, '2026-11-17', 4000, 'Sold bike parts', new Date('2026-11-17T11:00:00Z'))
+  const debt = await addDebt(target, {
+    name: 'PayPal Credit',
+    balance: 100000,
+    aprBp: 2390,
+    monthlyPayment: 10000,
+    dayOfMonth: 20,
+    interestFreeUntil: '2027-02-28',
+  })
+  await addDebtPayment(target, debt, '2026-11-17', 5000, new Date('2026-11-17T12:00:00Z'))
   await addMonthly(target, 'bills', {
     name: 'Phone contract',
     amount: 2500,
@@ -78,6 +89,12 @@ describe('backup round trip', () => {
     const b = safeToday((await loadSafeTodayInput(other, '2026-11-17'))!)
     expect(b).toEqual(a)
     expect(await other.done.count()).toBe(1)
+    expect((await other.debts.toArray())[0]).toMatchObject({
+      name: 'PayPal Credit',
+      aprBp: 2390,
+      interestFreeUntil: '2027-02-28',
+    })
+    expect(await other.debtPayments.count()).toBe(1)
     expect((await other.income.toArray())[0]).toMatchObject({
       amount: 4000,
       note: 'Sold bike parts',
@@ -110,11 +127,12 @@ describe('backup round trip', () => {
     const backup = await exportBackup(db, new Date('2026-11-17T12:00:00Z'))
     expect(summarise(backup)).toEqual({
       exportedAt: '2026-11-17T12:00:00.000Z',
-      balance: 80000 - 2340 + 4000, // after the food spend and income adjusted it
+      balance: 80000 - 2340 + 4000 - 5000, // after food, income and an extra debt payment
       bills: 2,
       pots: 1,
       foodSpends: 1,
       income: 1,
+      debts: 1,
     })
   })
 

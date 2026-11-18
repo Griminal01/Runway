@@ -1,6 +1,8 @@
 import type {
   BalanceEntry,
   BankHolidayEdit,
+  Debt,
+  DebtPayment,
   DoneEntry,
   FoodSpendEntry,
   IncomeEntry,
@@ -30,6 +32,8 @@ export interface BackupData {
   paydayOverrides: PaydayOverride[]
   bankHolidayEdits: BankHolidayEdit[]
   income: IncomeEntry[]
+  debts: Debt[]
+  debtPayments: DebtPayment[]
 }
 
 export interface Backup {
@@ -46,6 +50,7 @@ export interface BackupSummary {
   pots: number
   foodSpends: number
   income: number
+  debts: number
 }
 
 const TABLES = [
@@ -58,6 +63,8 @@ const TABLES = [
   'paydayOverrides',
   'bankHolidayEdits',
   'income',
+  'debts',
+  'debtPayments',
 ] as const
 
 // --- Export -----------------------------------------------------------------
@@ -192,7 +199,10 @@ export function parseBackup(json: string): ParseResult {
           ...(Number.isInteger(b.id) ? { id: b.id as number } : {}),
           amount: pence(b.amount, 'Balance', true),
           enteredAt: timestamp(b.enteredAt, 'Balance time'),
-          source: b.source === 'food' || b.source === 'income' ? b.source : 'manual',
+          source:
+            b.source === 'food' || b.source === 'income' || b.source === 'debt'
+              ? b.source
+              : 'manual',
         })),
         bills: arrayOf(d, 'bills').map((b) => monthly(b, 'bill')),
         pots: arrayOf(d, 'pots').map((p) => monthly(p, 'pot')),
@@ -229,6 +239,40 @@ export function parseBackup(json: string): ParseResult {
             ? { balanceAdjustedAt: timestamp(i.balanceAdjustedAt, 'Income time') }
             : {}),
         })),
+        debts: arrayOf(d, 'debts', true).map((x): Debt => {
+          const apr = x.aprBp
+          if (!Number.isInteger(apr) || (apr as number) < 0 || (apr as number) > 10_000) {
+            fail('A debt APR isn’t valid')
+          }
+          const day = x.dayOfMonth
+          if (!Number.isInteger(day) || (day as number) < 1 || (day as number) > 31) {
+            fail('A debt payment day is out of range')
+          }
+          return {
+            id: text(x.id, 'Debt id'),
+            name: text(x.name, 'Debt name'),
+            balance: pence(x.balance, 'Debt balance'),
+            balanceUpdatedAt: timestamp(x.balanceUpdatedAt, 'Debt balance time'),
+            startBalance: pence(x.startBalance, 'Debt starting balance'),
+            aprBp: apr as number,
+            monthlyPayment: pence(x.monthlyPayment, 'Debt monthly payment'),
+            dayOfMonth: day as number,
+            active: x.active !== false,
+            ...(x.interestFreeUntil !== undefined
+              ? { interestFreeUntil: date(x.interestFreeUntil, 'Interest-free date') }
+              : {}),
+          }
+        }),
+        debtPayments: arrayOf(d, 'debtPayments', true).map((p): DebtPayment => ({
+          ...(Number.isInteger(p.id) ? { id: p.id as number } : {}),
+          debtId: text(p.debtId, 'Debt payment id'),
+          date: date(p.date, 'Debt payment date'),
+          amount: pence(p.amount, 'Debt payment'),
+          loggedAt: timestamp(p.loggedAt, 'Debt payment time'),
+          ...(p.balanceAdjustedAt
+            ? { balanceAdjustedAt: timestamp(p.balanceAdjustedAt, 'Debt payment time') }
+            : {}),
+        })),
       },
     }
     return { ok: true, backup }
@@ -249,6 +293,7 @@ export function summarise(backup: Backup): BackupSummary {
     pots: backup.data.pots.length,
     foodSpends: backup.data.foodSpends.length,
     income: backup.data.income.length,
+    debts: backup.data.debts.length,
   }
 }
 
@@ -269,6 +314,8 @@ export async function restoreBackup(db: RunwayDB, backup: Backup): Promise<void>
       await db.paydayOverrides.bulkAdd(d.paydayOverrides)
       await db.bankHolidayEdits.bulkAdd(d.bankHolidayEdits)
       await db.income.bulkAdd(d.income)
+      await db.debts.bulkAdd(d.debts)
+      await db.debtPayments.bulkAdd(d.debtPayments)
     },
   )
 }

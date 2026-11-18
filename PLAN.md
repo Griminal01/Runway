@@ -140,6 +140,17 @@ The phone is the only copy, so this matters.
 
 ---
 
+## Phase 9: Debt payoff (PayPal Credit)
+
+- **Debt** tab: what's owed (estimated between updates), progress since it was added, and the plan's payoff date and total interest, compared with minimum payments only.
+- The regular payment counts in Safe today like a bill and stops once the debt is cleared.
+- **Pay it off sooner**: shows money spare above the usual daily spend, pre-filled into **Pay extra**. Paying it leaves Safe today at the usual daily spend.
+- **0% offers**: how much a month clears the balance before interest starts.
+- **What if I paid…**: try a monthly amount and make it the plan.
+- Schema v3 (debts, extra debt payments). Backups include them.
+
+---
+
 ## Later, if wanted
 
 - Import a bank CSV on the device, to log food spends faster. Parsed locally, never stored as a file.

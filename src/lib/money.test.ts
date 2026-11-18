@@ -11,16 +11,25 @@ import {
   effectivePayday,
   foodFloorRemaining,
   foodWeekStart,
+  estimateDebtBalance,
+  estimatedMinimum,
+  formatAPR,
   formatGBP,
   hasEnded,
   isoWeekday,
   isWorkingDay,
+  monthlyInterest,
+  monthlyRate,
   nextOccurrence,
   nextPayday,
   upcomingPaydays,
   occurrenceKey,
+  parseAPR,
   parseGBP,
+  paymentToClearBy,
   safeToday,
+  simulateDebt,
+  spareForDebt,
   type FoodSettings,
   type SafeTodayInput,
 } from './money'
@@ -393,5 +402,113 @@ describe('bills with an end date', () => {
     expect(hasEnded(contract, '2026-12-20')).toBe(false)
     expect(hasEnded(contract, '2026-12-21')).toBe(true)
     expect(hasEnded({ dayOfMonth: 20 }, '2030-01-01')).toBe(false)
+  })
+})
+
+describe('debt payoff', () => {
+  const paypal = { aprBp: 2390, dayOfMonth: 20 }
+
+  it('parses and formats APRs', () => {
+    expect(parseAPR('23.9')).toBe(2390)
+    expect(parseAPR('23.9%')).toBe(2390)
+    expect(parseAPR('0')).toBe(0)
+    expect(parseAPR('19.95')).toBe(1995)
+    expect(parseAPR('abc')).toBeNull()
+    expect(parseAPR('23.999')).toBeNull()
+    expect(parseAPR('101')).toBeNull()
+    expect(formatAPR(2390)).toBe('23.9%')
+  })
+
+  it('converts APR to a monthly rate properly, not APR / 12', () => {
+    // (1.239)^(1/12) - 1 = 1.8019%
+    expect(monthlyRate(2390)).toBeCloseTo(0.018019, 5)
+    expect(monthlyInterest(100000, 2390)).toBe(1802) // £1,000 -> £18.02
+    expect(monthlyInterest(100000, 0)).toBe(0)
+    expect(monthlyInterest(0, 2390)).toBe(0)
+  })
+
+  it('estimates the minimum payment', () => {
+    expect(estimatedMinimum(100000, 1802)).toBe(2000 + 1802) // 2% of £1,000 + interest
+    expect(estimatedMinimum(10000, 180)).toBe(500 + 180) // £5 floor
+    expect(estimatedMinimum(300, 5)).toBe(305) // never more than owed
+  })
+
+  it('pays off with a fixed monthly payment', () => {
+    const p = simulateDebt(100000, paypal, 10000, '2026-11-18')
+    expect(p.cleared).toBe(true)
+    expect(p.stuck).toBe(false)
+    expect(p.steps[0]).toEqual({
+      date: '2026-11-20',
+      interest: 1802,
+      payment: 10000,
+      balanceAfter: 91802,
+    })
+    // Checked independently: 12 payments, £112.63 interest, final payment £12.63.
+    expect(p.steps).toHaveLength(12)
+    expect(p.payoffDate).toBe('2027-10-20')
+    expect(p.totalInterest).toBe(11263)
+    expect(p.steps.at(-1)!.payment).toBe(1263)
+    expect(p.totalPaid).toBe(100000 + p.totalInterest)
+    // The last payment is only what's left.
+    expect(p.steps.at(-1)!.payment).toBeLessThan(10000)
+  })
+
+  it('paying more clears it sooner with less interest', () => {
+    const plan = simulateDebt(100000, paypal, 10000, '2026-11-18')
+    const more = simulateDebt(100000, paypal, 15000, '2026-11-18')
+    expect(more.steps.length).toBeLessThan(plan.steps.length)
+    expect(more.totalInterest).toBeLessThan(plan.totalInterest)
+  })
+
+  it('minimum payments take far longer', () => {
+    const min = simulateDebt(100000, paypal, estimatedMinimum, '2026-11-18')
+    expect(min.cleared).toBe(true)
+    expect(min.steps.length).toBeGreaterThan(60)
+  })
+
+  it('flags a payment that never covers the interest', () => {
+    const p = simulateDebt(100000, paypal, 1500, '2026-11-18')
+    expect(p.stuck).toBe(true)
+    expect(p.cleared).toBe(false)
+    expect(p.payoffDate).toBeNull()
+  })
+
+  it('charges no interest during a 0% period', () => {
+    const p = simulateDebt(
+      40000,
+      { ...paypal, interestFreeUntil: '2027-02-28' },
+      10000,
+      '2026-11-18',
+    )
+    expect(p.totalInterest).toBe(0) // 4 payments of £100 on 20 Nov, Dec, Jan, Feb
+    expect(p.payoffDate).toBe('2027-02-20')
+  })
+
+  it('works out what clears a 0% balance before interest starts', () => {
+    expect(paymentToClearBy(40000, 20, '2026-11-18', '2027-02-28')).toEqual({
+      payments: 4,
+      perPayment: 10000,
+    })
+    expect(paymentToClearBy(40001, 20, '2026-11-18', '2027-02-28')?.perPayment).toBe(10001)
+    expect(paymentToClearBy(40000, 20, '2026-11-25', '2026-12-01')).toBeNull()
+  })
+
+  it('estimates today’s balance from the last update', () => {
+    const at = '2026-11-01T09:00:00.000Z'
+    // Typed in £1,000 on 1 Nov; the 20 Nov payment has gone by 25 Nov.
+    expect(estimateDebtBalance(100000, at, paypal, 10000, [], '2026-11-19')).toBe(100000)
+    expect(estimateDebtBalance(100000, at, paypal, 10000, [], '2026-11-20')).toBe(100000) // due today
+    expect(estimateDebtBalance(100000, at, paypal, 10000, [], '2026-11-25')).toBe(91802)
+    const extra = { date: '2026-11-10', amount: 5000, loggedAt: '2026-11-10T12:00:00.000Z' }
+    expect(estimateDebtBalance(100000, at, paypal, 10000, [extra], '2026-11-19')).toBe(95000)
+    // An extra logged before the balance was typed in is already included in it.
+    const old = { ...extra, loggedAt: '2026-10-30T12:00:00.000Z' }
+    expect(estimateDebtBalance(100000, at, paypal, 10000, [old], '2026-11-19')).toBe(100000)
+  })
+
+  it('finds money that can go to debt while keeping the usual daily spend', () => {
+    const r = { spare: 53500, days: 10 } as Parameters<typeof spareForDebt>[0]
+    expect(spareForDebt(r, 1500)).toBe(38500) // 535 - 15 x 10
+    expect(spareForDebt({ ...r, spare: 10000 }, 1500)).toBe(0)
   })
 })

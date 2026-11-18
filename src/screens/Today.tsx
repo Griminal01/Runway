@@ -4,15 +4,24 @@ import { AmountSheet } from '../components/AmountSheet'
 import { backupReminder } from '../lib/backup'
 import { saveBackupFile } from '../lib/backupFile'
 import { db } from '../lib/db'
-import { formatShortDate, paydayLine, statusFor } from '../lib/format'
+import { formatMonth, formatShortDate, paydayLine, statusFor } from '../lib/format'
 import {
   currentFoodWeek,
   formatGBP,
+  monthKey,
   safeToday,
+  simulateDebt,
   type DueOccurrence,
   type SafeTodayInput,
 } from '../lib/money'
-import { addFoodSpend, addIncome, setBalance } from '../lib/store'
+import {
+  addFoodSpend,
+  addIncome,
+  debtEstimate,
+  debtItemId,
+  debtTerms,
+  setBalance,
+} from '../lib/store'
 
 interface Props {
   input: SafeTodayInput
@@ -22,10 +31,29 @@ interface Props {
 
 export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
   const [sheet, setSheet] = useState<'balance' | 'food' | 'income' | null>(null)
-  const names = useLiveQuery(async () => {
-    const [bills, pots] = await Promise.all([db.bills.toArray(), db.pots.toArray()])
-    return new Map([...bills, ...pots].map((x) => [x.id, x.name]))
-  })
+  const lookup = useLiveQuery(async () => {
+    const [bills, pots, debts, debtPayments] = await Promise.all([
+      db.bills.toArray(),
+      db.pots.toArray(),
+      db.debts.toArray(),
+      db.debtPayments.toArray(),
+    ])
+    return {
+      names: new Map([
+        ...[...bills, ...pots].map((x) => [x.id, x.name] as const),
+        ...debts.map((d) => [debtItemId(d.id), `${d.name} payment`] as const),
+      ]),
+      debts: debts
+        .filter((d) => d.active)
+        .map((d) => {
+          const owed = debtEstimate(d, debtPayments, input.today)
+          const plan = simulateDebt(owed, debtTerms(d), d.monthlyPayment, input.today)
+          return { id: d.id, name: d.name, owed, payoffDate: plan.payoffDate }
+        })
+        .filter((d) => d.owed > 0),
+    }
+  }, [input.today])
+  const names = lookup?.names
 
   const settings = useLiveQuery(() => db.settings.get('main'))
   const reminder = settings ? backupReminder(settings) : null
@@ -140,6 +168,20 @@ export function Today({ input, balanceEnteredAt, balanceEstimated }: Props) {
           </p>
         )}
       </section>
+
+      {lookup?.debts.map((d) => (
+        <a key={d.id} className="card card-link" href="#/debt">
+          <span>
+            <strong>{d.name}</strong>
+            <span className="muted small block">
+              {d.payoffDate
+                ? `Paid off ${formatMonth(monthKey(d.payoffDate))} on your plan`
+                : 'See your plan'}
+            </span>
+          </span>
+          <span className="amount strong">{formatGBP(d.owed)}</span>
+        </a>
+      ))}
 
       <details className="card">
         <summary>

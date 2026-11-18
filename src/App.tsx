@@ -5,6 +5,7 @@ import { useToday } from './hooks/useToday'
 import { db } from './lib/db'
 import { latestBalance, loadSafeTodayInput } from './lib/store'
 import { Bills } from './screens/Bills'
+import { Debt } from './screens/Debt'
 import { Food } from './screens/Food'
 import { Income } from './screens/Income'
 import { Settings } from './screens/Settings'
@@ -34,6 +35,7 @@ export default function App() {
       {route === 'food' && <Food today={today} />}
       {route === 'income' && <Income today={today} />}
       {route === 'bills' && <Bills today={today} />}
+      {route === 'debt' && <Debt input={data.input} />}
       {route === 'settings' && <Settings today={today} />}
       <Nav current={route} />
     </>

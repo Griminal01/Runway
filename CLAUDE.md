@@ -10,6 +10,12 @@ Personal budgeting PWA for one user (Josh, UK, paid monthly in GBP), used on a S
 - Pots and the buffer are excluded from Safe today.
 - Bills and pot top-ups can have an end date (date of the final payment). Payments up to and including it count; nothing after it does.
 - Extra income (money in apart from pay, e.g. selling something) is added to the stored balance straight away, as an estimate until the next manual balance update. Deleting it takes it back off, unless a manual balance update has happened since.
+- Debts (e.g. PayPal Credit):
+  - The regular monthly payment counts in Safe today like a bill, capped at what's left (plus that month's interest), and stops once the debt is cleared.
+  - Interest is estimated monthly on the payment date at (1 + APR)^(1/12) - 1, none during a 0% offer. Payoff dates and interest are estimates; typing in the real balance from the lender's app resets them.
+  - Between updates, what's owed = last typed-in balance, minus regular payments whose date has passed (with interest added), minus extra payments logged since.
+  - An extra payment lowers both what's owed and the stored bank balance, like a food spend. Deleting it undoes both, unless a manual update has happened since.
+  - "Spare for debt" = spare until payday - usual daily spend x days until payday, never below 0. Paying exactly that leaves Safe today at the usual daily spend.
 - Payday: by default, the penultimate working day of the month. Working days are Monday to Friday, excluding England & Wales bank holidays.
   - Bank holidays come from a list bundled with the app (no network fetch). Update it yearly; the user can also add or remove dates in settings.
   - The user can manually override the payday date for any month (e.g. early pay at Christmas). An override always wins over the calculated date.
