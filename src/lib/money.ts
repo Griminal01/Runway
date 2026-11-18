@@ -456,3 +456,186 @@ export function safeToday(input: SafeTodayInput): SafeTodayResult {
     colour: colourState(perDay, input.plannedDailySpend, foodAtRisk),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Debt payoff (e.g. PayPal Credit)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse an APR typed as a percentage ('23.9', '23.9%') into basis points (2390).
+ * Up to 2 decimal places; 0% is allowed.
+ */
+export function parseAPR(input: string): number | null {
+  const match = /^(\d{1,3})(?:\.(\d{1,2}))?%?$/.exec(input.trim())
+  if (!match) return null
+  const bp = Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'))
+  return bp <= 10_000 ? bp : null
+}
+
+/** 2390 -> '23.9%'. */
+export function formatAPR(bp: number): string {
+  return `${(bp / 100).toString()}%`
+}
+
+/**
+ * Monthly interest rate for an APR. UK APRs are effective annual rates, so the monthly
+ * rate is (1 + APR)^(1/12) - 1, not APR / 12.
+ */
+export function monthlyRate(aprBp: number): number {
+  return Math.pow(1 + aprBp / 10_000, 1 / 12) - 1
+}
+
+/** One month's interest on a balance, to the nearest penny. */
+export function monthlyInterest(balance: Pence, aprBp: number): Pence {
+  if (balance <= 0 || aprBp <= 0) return 0
+  return Math.round(balance * monthlyRate(aprBp))
+}
+
+/**
+ * Estimated PayPal Credit-style minimum: the higher of £5 or 2% of the balance, plus the month's
+ * interest, never more than what's owed. Only used for the "minimum payments only" comparison.
+ */
+export function estimatedMinimum(balance: Pence, interest: Pence): Pence {
+  const base = Math.max(500, Math.ceil(balance * 0.02))
+  return Math.min(balance + interest, base + interest)
+}
+
+export interface DebtTerms {
+  aprBp: number
+  /** Day of the month the regular payment goes out. */
+  dayOfMonth: number
+  /** No interest is charged on payment dates up to and including this date. */
+  interestFreeUntil?: ISODate
+}
+
+export type PaymentRule = Pence | ((balance: Pence, interest: Pence) => Pence)
+
+export interface DebtStep {
+  date: ISODate
+  interest: Pence
+  payment: Pence
+  balanceAfter: Pence
+}
+
+export interface DebtProjection {
+  steps: DebtStep[]
+  /** Balance at the end of the simulation. */
+  balance: Pence
+  cleared: boolean
+  /** The payment doesn't cover the interest, so the debt never clears. */
+  stuck: boolean
+  totalInterest: Pence
+  totalPaid: Pence
+  payoffDate: ISODate | null
+}
+
+/**
+ * Step a debt month by month. On each payment date: interest is added (unless still
+ * interest-free), then the payment comes off. Payment dates run from `firstPaymentOnOrAfter`.
+ * With `before`, only payment dates before it are processed (used to estimate today's balance).
+ */
+export function simulateDebt(
+  startBalance: Pence,
+  terms: DebtTerms,
+  payment: PaymentRule,
+  firstPaymentOnOrAfter: ISODate,
+  options: { before?: ISODate; maxMonths?: number } = {},
+): DebtProjection {
+  assertPence(startBalance, 'debt balance')
+  const maxMonths = options.maxMonths ?? 600
+  const steps: DebtStep[] = []
+  let balance = Math.max(0, startBalance)
+  let totalInterest = 0
+  let totalPaid = 0
+  let stuck = false
+  let date = nextOccurrence(terms.dayOfMonth, firstPaymentOnOrAfter)
+
+  while (balance > 0 && steps.length < maxMonths) {
+    if (options.before !== undefined && date >= options.before) break
+    const interestFree = terms.interestFreeUntil !== undefined && date <= terms.interestFreeUntil
+    const interest = interestFree ? 0 : monthlyInterest(balance, terms.aprBp)
+    const wanted = typeof payment === 'function' ? payment(balance, interest) : payment
+    const paid = Math.min(Math.max(0, wanted), balance + interest)
+    if (paid <= interest && interest > 0) {
+      stuck = true
+      break
+    }
+    balance = balance + interest - paid
+    totalInterest += interest
+    totalPaid += paid
+    steps.push({ date, interest, payment: paid, balanceAfter: balance })
+    date = nextOccurrence(terms.dayOfMonth, addDays(date, 1))
+  }
+
+  if (balance > 0 && options.before === undefined && steps.length >= maxMonths) stuck = true
+  const cleared = balance === 0
+  return {
+    steps,
+    balance,
+    cleared,
+    stuck,
+    totalInterest,
+    totalPaid,
+    payoffDate: cleared && steps.length > 0 ? steps[steps.length - 1].date : null,
+  }
+}
+
+export interface DebtExtraPayment {
+  date: ISODate
+  amount: Pence
+  /** When it was logged, ISO timestamp. */
+  loggedAt: string
+}
+
+/**
+ * Best estimate of what's owed today: the balance last typed in, minus regular payments whose
+ * date has passed (with interest added each month), minus extra payments logged since.
+ * A payment due today is not counted yet, matching how bills work in Safe today.
+ */
+export function estimateDebtBalance(
+  balance: Pence,
+  balanceUpdatedAt: string,
+  terms: DebtTerms,
+  monthlyPayment: Pence,
+  extras: readonly DebtExtraPayment[],
+  today: ISODate,
+): Pence {
+  const updatedDay = balanceUpdatedAt.slice(0, 10)
+  const extrasSince = extras
+    .filter((e) => e.loggedAt > balanceUpdatedAt)
+    .reduce((total, e) => total + e.amount, 0)
+  // Extras come off first. That slightly understates interest, which is fine for an estimate
+  // that's reset every time the real balance is typed in from PayPal.
+  const afterExtras = Math.max(0, balance - extrasSince)
+  if (updatedDay >= today) return afterExtras
+  return simulateDebt(afterExtras, terms, monthlyPayment, addDays(updatedDay, 1), {
+    before: today,
+  }).balance
+}
+
+/** Months between payments needed to clear `balance` by `deadline` with no interest. */
+export function paymentToClearBy(
+  balance: Pence,
+  dayOfMonth: number,
+  today: ISODate,
+  deadline: ISODate,
+): { payments: number; perPayment: Pence } | null {
+  let payments = 0
+  for (
+    let d = nextOccurrence(dayOfMonth, today);
+    d <= deadline;
+    d = nextOccurrence(dayOfMonth, addDays(d, 1))
+  ) {
+    payments++
+  }
+  if (payments === 0) return null
+  return { payments, perPayment: Math.ceil(balance / payments) }
+}
+
+/**
+ * How much could go to debt right now while keeping Safe today at the usual daily spend:
+ * spare money minus the usual daily spend for every day to payday. Never below 0.
+ */
+export function spareForDebt(result: SafeTodayResult, plannedDailySpend: Pence): Pence {
+  return Math.max(0, result.spare - plannedDailySpend * result.days)
+}

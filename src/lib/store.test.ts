@@ -2,12 +2,18 @@ import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { RunwayDB } from './db'
 import { localToday, requestPersistentStorage } from './device'
-import { occurrenceKey, safeToday } from './money'
+import { monthlyInterest, occurrenceKey, safeToday } from './money'
 import {
+  addDebt,
+  addDebtPayment,
   addFoodSpend,
   addIncome,
   addMonthly,
   bankHolidays,
+  debtEstimate,
+  debtItemId,
+  deleteDebt,
+  deleteDebtPayment,
   deleteFoodSpend,
   deleteIncome,
   deleteMonthly,
@@ -16,8 +22,10 @@ import {
   saveSettings,
   setBalance,
   setBankHolidayEdit,
+  setDebtBalance,
   setDone,
   setPaydayOverride,
+  updateDebt,
   updateMonthly,
 } from './store'
 
@@ -311,7 +319,7 @@ describe('bill end dates', () => {
 })
 
 describe('schema upgrade', () => {
-  it('upgrades a v1 database to v2 without losing data', async () => {
+  it('upgrades a v1 database to the latest version without losing data', async () => {
     const { default: Dexie } = await import('dexie')
     const name = `upgrade-test-${n++}`
     const v1 = new Dexie(name)
@@ -338,9 +346,103 @@ describe('schema upgrade', () => {
       expect((await latestBalance(v2))?.amount).toBe(80000)
       await addIncome(v2, '2026-11-17', 4000)
       expect((await latestBalance(v2))?.amount).toBe(84000)
-      expect(v2.verno).toBe(2)
+      expect(v2.verno).toBe(3)
+      expect(await v2.debts.count()).toBe(0)
     } finally {
       await v2.delete()
     }
+  })
+})
+
+describe('debts', () => {
+  const t = (iso: string) => new Date(iso)
+  const paypal = {
+    name: 'PayPal Credit',
+    balance: 100000,
+    aprBp: 2390,
+    monthlyPayment: 10000,
+    dayOfMonth: 20,
+  }
+
+  it('adds, validates and records the starting balance', async () => {
+    const id = await addDebt(db, paypal, t('2026-11-17T09:00:00Z'))
+    expect(await db.debts.get(id)).toMatchObject({
+      startBalance: 100000,
+      balanceUpdatedAt: '2026-11-17T09:00:00.000Z',
+      active: true,
+    })
+    await expect(addDebt(db, { ...paypal, monthlyPayment: 0 })).rejects.toThrow(RangeError)
+    await expect(addDebt(db, { ...paypal, aprBp: 23.9 })).rejects.toThrow(RangeError)
+    await expect(addDebt(db, { ...paypal, balance: 10.5 })).rejects.toThrow(RangeError)
+    await expect(addDebt(db, { ...paypal, interestFreeUntil: '2027-02-30' })).rejects.toThrow(
+      RangeError,
+    )
+  })
+
+  it('counts the regular payment in Safe today like a bill', async () => {
+    await saveSettings(db, settings)
+    await setBalance(db, 80000)
+    const id = await addDebt(db, paypal)
+    const r = safeToday((await loadSafeTodayInput(db, '2026-11-17'))!)
+    expect(r.billsDue).toEqual([{ id: debtItemId(id), amount: 10000, dueDate: '2026-11-20' }])
+    // Marking it paid works like any bill.
+    await setDone(db, debtItemId(id), '2026-11', true)
+    expect(safeToday((await loadSafeTodayInput(db, '2026-11-17'))!).billsTotal).toBe(0)
+  })
+
+  it('caps the last payment and stops once cleared', async () => {
+    await saveSettings(db, settings)
+    await setBalance(db, 80000)
+    const id = await addDebt(db, { ...paypal, balance: 3000 })
+    const r = safeToday((await loadSafeTodayInput(db, '2026-11-17'))!)
+    expect(r.billsTotal).toBe(3000 + monthlyInterest(3000, 2390))
+    await setDebtBalance(db, id, 0)
+    expect(safeToday((await loadSafeTodayInput(db, '2026-11-17'))!).billsTotal).toBe(0)
+  })
+
+  it('an extra payment lowers the bank balance and the debt; deleting undoes both', async () => {
+    await setBalance(db, 80000, t('2026-11-17T09:00:00Z'))
+    const debtId = await addDebt(db, paypal, t('2026-11-17T09:00:00Z'))
+    const pid = await addDebtPayment(db, debtId, '2026-11-17', 20000, t('2026-11-17T10:00:00Z'))
+    expect(await latestBalance(db)).toMatchObject({ amount: 60000, estimated: true })
+    const debt = (await db.debts.get(debtId))!
+    expect(debtEstimate(debt, await db.debtPayments.toArray(), '2026-11-17')).toBe(80000)
+
+    await deleteDebtPayment(db, pid, t('2026-11-17T10:05:00Z'))
+    expect((await latestBalance(db))?.amount).toBe(80000)
+    expect(debtEstimate(debt, await db.debtPayments.toArray(), '2026-11-17')).toBe(100000)
+  })
+
+  it('typing in the real balance resets the estimate', async () => {
+    const id = await addDebt(db, paypal, t('2026-11-01T09:00:00Z'))
+    await addDebtPayment(db, id, '2026-11-10', 5000, t('2026-11-10T09:00:00Z'))
+    await setDebtBalance(db, id, 93000, t('2026-11-12T09:00:00Z'))
+    const debt = (await db.debts.get(id))!
+    expect(debtEstimate(debt, await db.debtPayments.toArray(), '2026-11-17')).toBe(93000)
+  })
+
+  it('updating keeps the balance time unless the balance changes; clears the 0% date', async () => {
+    const id = await addDebt(
+      db,
+      { ...paypal, interestFreeUntil: '2027-02-28' },
+      t('2026-11-01T09:00:00Z'),
+    )
+    await updateDebt(db, id, { ...paypal, monthlyPayment: 15000 }, t('2026-11-05T09:00:00Z'))
+    let debt = (await db.debts.get(id))!
+    expect(debt.balanceUpdatedAt).toBe('2026-11-01T09:00:00.000Z')
+    expect(debt.interestFreeUntil).toBeUndefined()
+    await updateDebt(db, id, { ...paypal, balance: 90000 }, t('2026-11-06T09:00:00Z'))
+    debt = (await db.debts.get(id))!
+    expect(debt.balanceUpdatedAt).toBe('2026-11-06T09:00:00.000Z')
+    expect(debt.startBalance).toBe(100000)
+  })
+
+  it('deleting a debt removes its payments and ticks', async () => {
+    const id = await addDebt(db, paypal)
+    await addDebtPayment(db, id, '2026-11-17', 1000)
+    await setDone(db, debtItemId(id), '2026-11', true)
+    await deleteDebt(db, id)
+    expect(await db.debtPayments.count()).toBe(0)
+    expect(await db.done.count()).toBe(0)
   })
 })

@@ -25,9 +25,9 @@ export interface BalanceEntry {
   enteredAt: string
   /**
    * 'manual' (typed in, the default), or an estimate adjusted by logging or removing a
-   * food spend ('food') or extra income ('income').
+   * food spend ('food'), extra income ('income') or an extra debt payment ('debt').
    */
-  source?: 'manual' | 'food' | 'income'
+  source?: 'manual' | 'food' | 'income' | 'debt'
 }
 
 /** A bill or a pot top-up: same amount on the same day each month. */
@@ -67,6 +67,37 @@ export interface IncomeEntry {
   balanceAdjustedAt?: string
 }
 
+/** A debt being paid off, e.g. PayPal Credit. */
+export interface Debt {
+  id: string
+  name: string
+  /** What's owed, as last typed in from the lender's app. */
+  balance: Pence
+  /** When `balance` was typed in, ISO timestamp. */
+  balanceUpdatedAt: string
+  /** The balance when first added, for the progress bar. */
+  startBalance: Pence
+  /** APR in basis points (23.9% = 2390). */
+  aprBp: number
+  /** The regular monthly payment. Counted in Safe today like a bill. */
+  monthlyPayment: Pence
+  dayOfMonth: number
+  /** End of a 0% offer, if any. */
+  interestFreeUntil?: ISODate
+  active: boolean
+}
+
+/** A one-off payment on top of the regular one. */
+export interface DebtPayment {
+  id?: number
+  debtId: string
+  date: ISODate
+  amount: Pence
+  loggedAt: string
+  /** When logging this lowered the bank balance. Lets a deletion put it back. */
+  balanceAdjustedAt?: string
+}
+
 export interface PaydayOverride {
   month: MonthKey
   date: ISODate
@@ -87,6 +118,8 @@ export class RunwayDB extends Dexie {
   paydayOverrides!: EntityTable<PaydayOverride, 'month'>
   bankHolidayEdits!: EntityTable<BankHolidayEdit, 'date'>
   income!: EntityTable<IncomeEntry, 'id'>
+  debts!: EntityTable<Debt, 'id'>
+  debtPayments!: EntityTable<DebtPayment, 'id'>
 
   constructor(name = 'runway') {
     super(name)
@@ -103,6 +136,11 @@ export class RunwayDB extends Dexie {
     // v2: extra income. Earlier tables carry over unchanged.
     this.version(2).stores({
       income: '++id, date',
+    })
+    // v3: debts and extra debt payments.
+    this.version(3).stores({
+      debts: 'id',
+      debtPayments: '++id, debtId, date',
     })
   }
 }

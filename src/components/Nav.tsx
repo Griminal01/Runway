@@ -18,6 +18,11 @@ const ITEMS: { route: Route; label: string; icon: string }[] = [
     icon: 'M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2zM9 8h6M9 12h6',
   },
   {
+    route: 'debt',
+    label: 'Debt',
+    icon: 'M3 6h18v12H3zM3 10h18M7 15h4',
+  },
+  {
     route: 'settings',
     label: 'Settings',
     icon: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4',

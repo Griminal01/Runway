@@ -371,7 +371,7 @@ details[open].card summary::after {
   right: 0;
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   max-width: 480px;
   margin: 0 auto;
   background: var(--surface);
@@ -623,4 +623,53 @@ details.more summary {
 
 .actions .span-2 {
   grid-column: span 2;
+}
+
+/* Debt */
+
+.debt-amount {
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 4px 0;
+}
+
+.green-text {
+  color: var(--green);
+}
+
+.block {
+  display: block;
+}
+
+.strong {
+  font-weight: 600;
+}
+
+.card-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.card-link::after {
+  content: '›';
+  color: var(--muted);
+  font-size: 1.4rem;
+}
+
+.inline-form > .money-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-item span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
